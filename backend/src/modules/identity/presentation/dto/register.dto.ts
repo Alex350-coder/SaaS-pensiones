@@ -11,6 +11,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { MaxBytes } from '../../../../core/http/validation/max-bytes.decorator';
+import {
+  PHONE_PATTERN,
+  PHONE_PATTERN_MESSAGE,
+} from '../../../../core/http/validation/patterns';
 
 /** Roles a visitor can self-register as. SUPER_ADMIN only exists via seed. */
 export const SELF_REGISTER_ROLES = [
@@ -43,9 +47,7 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^\+?[\d\s()-]{6,30}$/, {
-    message: 'El teléfono no tiene un formato válido.',
-  })
+  @Matches(PHONE_PATTERN, { message: PHONE_PATTERN_MESSAGE })
   phone?: string;
 
   @IsOptional()

@@ -36,9 +36,9 @@ describe('Core module (e2e)', () => {
     expect(res.body.data.database).toBe('up');
   });
 
-  it('GET /api/v1/example/restaurants returns paginated envelope', async () => {
+  it('GET /api/v1/restaurants returns paginated envelope', async () => {
     const res = await request(app.getHttpServer())
-      .get('/api/v1/example/restaurants')
+      .get('/api/v1/restaurants')
       .query({ page: 1, limit: 2 })
       .expect(200);
 
@@ -52,7 +52,7 @@ describe('Core module (e2e)', () => {
 
   it('rejects invalid pagination with a VALIDATION_ERROR envelope', async () => {
     const res = await request(app.getHttpServer())
-      .get('/api/v1/example/restaurants')
+      .get('/api/v1/restaurants')
       .query({ limit: 0 })
       .expect(400);
 
@@ -66,7 +66,7 @@ describe('Core module (e2e)', () => {
 
   it('rejects unknown query params (whitelist + forbidNonWhitelisted)', async () => {
     const res = await request(app.getHttpServer())
-      .get('/api/v1/example/restaurants')
+      .get('/api/v1/restaurants')
       .query({ hacker: '1' })
       .expect(400);
 

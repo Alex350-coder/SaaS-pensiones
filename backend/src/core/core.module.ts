@@ -7,8 +7,6 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { AppConfigModule } from './config/app-config.module';
 import { AppConfigService } from './config/app-config.service';
-import { ExampleRestaurantsController } from './example/example-restaurants.controller';
-import { ExampleRestaurantsService } from './example/example-restaurants.service';
 import { HealthController } from './health/health.controller';
 import { AllExceptionsFilter } from './http/all-exceptions.filter';
 import { TransformInterceptor } from './http/transform.interceptor';
@@ -46,10 +44,9 @@ const GLOBAL_THROTTLE_TTL_MS = 60_000;
       }),
     }),
   ],
-  controllers: [HealthController, ExampleRestaurantsController],
+  controllers: [HealthController],
   providers: [
     AuditService,
-    ExampleRestaurantsService,
     {
       provide: APP_PIPE,
       useValue: new ValidationPipe({
