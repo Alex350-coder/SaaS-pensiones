@@ -1,0 +1,25 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Env } from './env';
+
+/** Typed facade over ConfigService so consumers never deal with raw keys. */
+@Injectable()
+export class AppConfigService {
+  constructor(private readonly config: ConfigService<Env, true>) {}
+
+  get nodeEnv(): Env['NODE_ENV'] {
+    return this.config.get('NODE_ENV', { infer: true });
+  }
+
+  get port(): number {
+    return this.config.get('PORT', { infer: true });
+  }
+
+  get appDatabaseUrl(): string {
+    return this.config.get('APP_DATABASE_URL', { infer: true });
+  }
+
+  get isProduction(): boolean {
+    return this.nodeEnv === 'production';
+  }
+}
