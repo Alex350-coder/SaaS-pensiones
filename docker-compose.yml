@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pensiones-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pensiones
+      POSTGRES_PASSWORD: pensiones_dev
+      POSTGRES_DB: pensiones
+    ports:
+      - "5432:5432"
+    volumes:
+      - pensiones_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pensiones -d pensiones"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    container_name: pensiones-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      # Migration owner (Prisma CLI: migrate deploy + grants at startup).
+      DATABASE_URL: postgresql://pensiones:pensiones_dev@db:5432/pensiones?schema=public
+      # Least-privilege runtime role (created by prisma/sql/runtime-role.sql).
+      APP_DATABASE_URL: postgresql://pensiones_app:pensiones_app_dev@db:5432/pensiones?schema=public
+    ports:
+      - "3000:3000"
+
+volumes:
+  pensiones_pgdata:

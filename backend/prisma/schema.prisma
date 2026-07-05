@@ -1,0 +1,524 @@
+// Pensiones - data model. Source of truth for business invariants is the
+// database itself: see docs/database-design.md. Constraints Prisma cannot
+// express (partial unique indexes, CHECKs) live in the migration SQL.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  CLIENT
+  RESTAURANT_ADMIN
+  SUPER_ADMIN
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("user_status")
+}
+
+enum RestaurantStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+
+  @@map("restaurant_status")
+}
+
+enum DishCategory {
+  STARTER
+  MAIN
+  BEVERAGE
+  DESSERT
+
+  @@map("dish_category")
+}
+
+enum MenuStatus {
+  DRAFT
+  PUBLISHED
+
+  @@map("menu_status")
+}
+
+enum PensionStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+
+  @@map("pension_status")
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  VOIDED
+
+  @@map("payment_status")
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  CANCELLED
+  FULFILLED
+  NO_SHOW
+
+  @@map("reservation_status")
+}
+
+enum AttendanceStatus {
+  WILL_ATTEND
+  WILL_NOT_ATTEND
+  ATTENDED
+  NO_SHOW
+
+  @@map("attendance_status")
+}
+
+enum NoticeType {
+  MENU_CHANGE
+  SCHEDULE_CHANGE
+  PROMOTION
+  CLOSURE
+  GENERAL
+
+  @@map("notice_type")
+}
+
+enum NotificationType {
+  NOTICE
+  PENSION_EXPIRING
+  PAYMENT_DUE
+  NEW_MESSAGE
+  RESERVATION
+  SYSTEM
+
+  @@map("notification_type")
+}
+
+enum InvoiceStatus {
+  ISSUED
+  VOIDED
+
+  @@map("invoice_status")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & Access
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  // Uniqueness is a partial index (live rows only) in the migration SQL, so a
+  // soft-deleted account frees its email for re-registration.
+  email        String     @db.Citext
+  passwordHash String     @map("password_hash")
+  fullName     String     @map("full_name") @db.VarChar(120)
+  phone        String?    @db.VarChar(30)
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  refreshTokens      RefreshToken[]
+  // 1:many at the DB level; "one live restaurant per owner" is a partial
+  // unique index in the migration SQL (soft-deleted restaurants don't count).
+  restaurants        Restaurant[]
+  pensions           Pension[]
+  reservations       Reservation[]
+  sentMessages       Message[]
+  notifications      Notification[]
+  noticeReads        NoticeRead[]
+  registeredPayments Payment[]      @relation("PaymentRegisteredBy")
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  familyId  String    @map("family_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Restaurant Catalog
+// ---------------------------------------------------------------------------
+
+model Restaurant {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // owner_id and slug uniqueness are partial indexes (live rows only) in the
+  // migration SQL — see docs/database-design.md §3.2.
+  ownerId             String           @map("owner_id") @db.Uuid
+  name                String           @db.VarChar(120)
+  slug                String           @db.VarChar(140)
+  description         String
+  logoUrl             String?          @map("logo_url")
+  coverImageUrl       String?          @map("cover_image_url")
+  address             String           @db.VarChar(255)
+  latitude            Decimal?         @db.Decimal(9, 6)
+  longitude           Decimal?         @db.Decimal(9, 6)
+  contactPhone        String           @map("contact_phone") @db.VarChar(30)
+  contactEmail        String           @map("contact_email") @db.Citext
+  status              RestaurantStatus @default(PENDING)
+  monthlyPensionPrice Decimal          @map("monthly_pension_price") @db.Decimal(10, 2)
+  deletedAt           DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner         User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  images        RestaurantImage[]
+  schedules     RestaurantSchedule[]
+  dishes        Dish[]
+  dailyMenus    DailyMenu[]
+  pensions      Pension[]
+  attendances   Attendance[]
+  notices       Notice[]
+  invoiceSeries InvoiceSeries[]
+
+  // Catalog index is partial (status, WHERE deleted_at IS NULL) in migration SQL.
+  @@map("restaurants")
+}
+
+model RestaurantImage {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  url          String
+  sortOrder    Int      @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, sortOrder])
+  @@map("restaurant_images")
+}
+
+model RestaurantSchedule {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  dayOfWeek    Int      @map("day_of_week") @db.SmallInt
+  opensAt      DateTime @map("opens_at") @db.Time(0)
+  closesAt     DateTime @map("closes_at") @db.Time(0)
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, dayOfWeek])
+  @@map("restaurant_schedules")
+}
+
+// ---------------------------------------------------------------------------
+// Menu Management
+// ---------------------------------------------------------------------------
+
+model Dish {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restaurantId String       @map("restaurant_id") @db.Uuid
+  name         String       @db.VarChar(120)
+  description  String?
+  category     DishCategory
+  price        Decimal      @db.Decimal(10, 2)
+  imageUrl     String?      @map("image_url")
+  isActive     Boolean      @default(true) @map("is_active")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItems  DailyMenuItem[]
+
+  @@index([restaurantId, category])
+  @@map("dishes")
+}
+
+model DailyMenu {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restaurantId String     @map("restaurant_id") @db.Uuid
+  menuDate     DateTime   @map("menu_date") @db.Date
+  status       MenuStatus @default(DRAFT)
+  menuPrice    Decimal    @map("menu_price") @db.Decimal(10, 2)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items        DailyMenuItem[]
+  reservations Reservation[]
+
+  @@unique([restaurantId, menuDate])
+  @@index([menuDate, status])
+  @@map("daily_menus")
+}
+
+model DailyMenuItem {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dailyMenuId String       @map("daily_menu_id") @db.Uuid
+  dishId      String       @map("dish_id") @db.Uuid
+  course      DishCategory
+
+  dailyMenu DailyMenu @relation(fields: [dailyMenuId], references: [id], onDelete: Cascade)
+  dish      Dish      @relation(fields: [dishId], references: [id], onDelete: Restrict)
+
+  @@unique([dailyMenuId, dishId])
+  @@index([dishId])
+  @@map("daily_menu_items")
+}
+
+// ---------------------------------------------------------------------------
+// Pensions
+// ---------------------------------------------------------------------------
+
+model Pension {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId     String        @map("client_id") @db.Uuid
+  restaurantId String        @map("restaurant_id") @db.Uuid
+  startDate    DateTime      @map("start_date") @db.Date
+  endDate      DateTime      @map("end_date") @db.Date
+  price        Decimal       @db.Decimal(10, 2)
+  status       PensionStatus @default(PENDING_PAYMENT)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  client       User          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  payments     Payment[]
+  attendances  Attendance[]
+  reservations Reservation[]
+  conversation Conversation?
+
+  // Partial unique index (one live pension per client+restaurant) in migration SQL.
+  @@index([clientId])
+  @@index([restaurantId, status])
+  @@index([status, endDate])
+  @@map("pensions")
+}
+
+model Payment {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pensionId      String        @map("pension_id") @db.Uuid
+  amount         Decimal       @db.Decimal(10, 2)
+  method         PaymentMethod
+  status         PaymentStatus @default(PENDING)
+  paidAt         DateTime?     @map("paid_at") @db.Timestamptz(6)
+  registeredById String        @map("registered_by") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pension      Pension  @relation(fields: [pensionId], references: [id], onDelete: Restrict)
+  registeredBy User     @relation("PaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  invoice      Invoice?
+
+  @@index([pensionId])
+  @@index([registeredById])
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Reservations & Attendance
+// ---------------------------------------------------------------------------
+
+model Reservation {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId         String            @map("client_id") @db.Uuid
+  dailyMenuId      String            @map("daily_menu_id") @db.Uuid
+  pensionId        String?           @map("pension_id") @db.Uuid
+  estimatedArrival DateTime          @map("estimated_arrival") @db.Time(0)
+  status           ReservationStatus @default(CONFIRMED)
+  notes            String?           @db.VarChar(255)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  client    User      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  dailyMenu DailyMenu @relation(fields: [dailyMenuId], references: [id], onDelete: Restrict)
+  pension   Pension?  @relation(fields: [pensionId], references: [id], onDelete: SetNull)
+
+  // Partial unique index (one live reservation per client+menu) and the
+  // composite FK (pension_id, client_id) -> pensions are in migration SQL.
+  @@index([dailyMenuId, status])
+  @@index([clientId])
+  @@index([pensionId])
+  @@map("reservations")
+}
+
+model Attendance {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pensionId      String           @map("pension_id") @db.Uuid
+  // Denormalized from the pension (immutable) so the production-projection
+  // query hits (restaurant, date) directly. Consistency with the pension is
+  // enforced by a composite FK in the migration SQL.
+  restaurantId   String           @map("restaurant_id") @db.Uuid
+  attendanceDate DateTime         @map("attendance_date") @db.Date
+  status         AttendanceStatus
+  confirmedAt    DateTime         @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pension    Pension    @relation(fields: [pensionId], references: [id], onDelete: Cascade)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  @@unique([pensionId, attendanceDate])
+  @@index([restaurantId, attendanceDate, status])
+  @@map("attendances")
+}
+
+// ---------------------------------------------------------------------------
+// Communication
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pensionId String   @unique @map("pension_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pension  Pension   @relation(fields: [pensionId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  senderId       String    @map("sender_id") @db.Uuid
+  content        String
+  readAt         DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  // id as tiebreaker: cursor pagination stays stable for same-timestamp messages.
+  @@index([conversationId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("messages")
+}
+
+model Notice {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restaurantId String     @map("restaurant_id") @db.Uuid
+  title        String     @db.VarChar(140)
+  body         String
+  type         NoticeType @default(GENERAL)
+  publishedAt  DateTime   @default(now()) @map("published_at") @db.Timestamptz(6)
+
+  restaurant Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  reads      NoticeRead[]
+
+  @@index([restaurantId, publishedAt(sort: Desc)])
+  @@map("notices")
+}
+
+model NoticeRead {
+  noticeId String   @map("notice_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  readAt   DateTime @default(now()) @map("read_at") @db.Timestamptz(6)
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, userId])
+  @@index([userId])
+  @@map("notice_reads")
+}
+
+model Notification {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  payload   Json             @default("{}")
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Partial index on unread notifications in migration SQL.
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Billing (simulated)
+// ---------------------------------------------------------------------------
+
+model InvoiceSeries {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  restaurantId String @map("restaurant_id") @db.Uuid
+  series       String @db.VarChar(10)
+  nextNumber   Int    @default(1) @map("next_number")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+  invoices   Invoice[]
+
+  @@unique([restaurantId, series])
+  @@map("invoice_series")
+}
+
+model Invoice {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId String        @unique @map("payment_id") @db.Uuid
+  seriesId  String        @map("series_id") @db.Uuid
+  number    Int
+  issuedAt  DateTime      @default(now()) @map("issued_at") @db.Timestamptz(6)
+  total     Decimal       @db.Decimal(10, 2)
+  pdfUrl    String?       @map("pdf_url")
+  status    InvoiceStatus @default(ISSUED)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  payment Payment       @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  series  InvoiceSeries @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+
+  @@unique([seriesId, number])
+  @@map("invoices")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String   @db.VarChar(60)
+  entityType String   @map("entity_type") @db.VarChar(40)
+  entityId   String   @map("entity_id") @db.Uuid
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
