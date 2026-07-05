@@ -302,6 +302,16 @@ export class RestaurantsService {
     }
   }
 
+  /**
+   * Structural-ownership helper for downstream contexts (Menu, Pensions…):
+   * resolves the caller's live restaurant id from the JWT identity, so other
+   * modules never accept a client-supplied restaurant id for owner actions.
+   */
+  async getOwnRestaurantId(ownerId: string): Promise<string> {
+    const restaurant = await this.findOwn(ownerId);
+    return restaurant.id;
+  }
+
   // --- Super Admin ----------------------------------------------------------
 
   async adminList(
