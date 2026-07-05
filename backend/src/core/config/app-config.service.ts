@@ -19,6 +19,18 @@ export class AppConfigService {
     return this.config.get('APP_DATABASE_URL', { infer: true });
   }
 
+  get jwtAccessSecret(): string {
+    return this.config.get('JWT_ACCESS_SECRET', { infer: true });
+  }
+
+  get jwtAccessTtlSeconds(): number {
+    return this.config.get('JWT_ACCESS_TTL_SECONDS', { infer: true });
+  }
+
+  get refreshTokenTtlDays(): number {
+    return this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
+  }
+
   get isProduction(): boolean {
     return this.nodeEnv === 'production';
   }

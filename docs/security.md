@@ -60,8 +60,21 @@
 - **Refresh token**: vida 7 días, opaco, hasheado en DB, **rotación en cada
   uso** con detección de reuso por `family_id` (ver A2).
 - Contraseñas: bcrypt cost ≥ 12; política mínima (longitud ≥ 8) validada con Zod
-  en frontend y class-validator en backend.
+  en frontend y class-validator en backend. Máximo 72 **bytes** (límite real
+  de bcrypt), validado por bytes y no por caracteres.
 - Logout: revoca la familia de refresh tokens del dispositivo.
+- Anti-enumeración en login: mismo `code`/mensaje para email inexistente y
+  contraseña incorrecta, **y** verificación bcrypt contra un hash dummy de
+  igual costo cuando el email no existe (sin oráculo de timing).
+
+**Trade-offs registrados (Fase 3):**
+
+- Dos refresh concurrentes legítimos con el mismo token (retry de red, dos
+  pestañas): el perdedor dispara la revocación de la familia ⇒ logout total.
+  Fail-closed deliberado: se prioriza detección de robo sobre esa esquina de UX.
+- Los eventos de auditoría de auth aún no capturan IP/user-agent; se añadirá
+  contexto de request al `AuditService` en una fase posterior (mejora M3 de la
+  revisión de seguridad de Fase 3).
 
 ### Autorización (RBAC + ownership)
 

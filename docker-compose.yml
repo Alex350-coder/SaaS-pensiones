@@ -31,6 +31,10 @@ services:
       DATABASE_URL: postgresql://pensiones:pensiones_dev@db:5432/pensiones?schema=public
       # Least-privilege runtime role (created by prisma/sql/runtime-role.sql).
       APP_DATABASE_URL: postgresql://pensiones_app:pensiones_app_dev@db:5432/pensiones?schema=public
+      # Dev-only secret; production uses a secret manager (Phase 18).
+      JWT_ACCESS_SECRET: dev-only-jwt-secret-change-me-0123456789abcdef
+      JWT_ACCESS_TTL_SECONDS: 900
+      REFRESH_TOKEN_TTL_DAYS: 7
     ports:
       - "3000:3000"
 

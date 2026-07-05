@@ -7,15 +7,16 @@
 
 ## Estado actual del proyecto
 
-**Fase actual: Fase 3 — Autenticación**
+**Fase actual: Fase 4 — Gestión de restaurantes**
 
 | Hito | Estado |
 |------|--------|
 | Fase 0 — Planificación y documentación estratégica | ✅ Completada (2026-07-04) |
 | Fase 1 — Diseño de base de datos | ✅ Completada (2026-07-05) |
 | Fase 2 — Backend core | ✅ Completada (2026-07-05) |
-| Fase 3 — Autenticación | 🔵 En curso |
-| Fases 4–18 | ⚪ Pendientes |
+| Fase 3 — Autenticación | ✅ Completada (2026-07-05) |
+| Fase 4 — Gestión de restaurantes | 🔵 En curso |
+| Fases 5–18 | ⚪ Pendientes |
 
 Al completar una fase: actualizar esta tabla, el encabezado de "Fase actual" y
 la sección "Registro de avance" al final del documento.
@@ -141,3 +142,4 @@ cliente, dashboard de restaurante + panel super admin.
 | 2026-07-04 | Fase 0 | Documentación estratégica creada (los 6 documentos). Fase actual pasa a Fase 1. |
 | 2026-07-05 | Fase 1 | Schema Prisma (20 tablas), migración inicial con invariantes hand-written (uniques parciales, FKs compuestas, CHECKs), PostgreSQL 16 en Docker, seed idempotente. Revisión con agente database-reviewer: 1 CRITICAL + 3 HIGH corregidos en la migración init (uniques parciales para soft delete, 7 índices FK, FKs compuestas de consistencia, CHECK de 30 días). Verificado: replay desde cero, seed doble sin duplicados, violaciones rechazadas por la DB. Pendientes documentados: rol de DB de runtime (Fase 2), UUIDv7 (optimización). Fase actual pasa a Fase 2. |
 | 2026-07-05 | Fase 2 | Backend core NestJS: módulo `core` transversal (envelope `{success,data,error}`, filtro global de excepciones con codes en inglés y mensajes en español, interceptor de envelope, `ValidationPipe` global whitelist+forbid+transform, paginación estándar `{items, meta}`), config tipada con Zod (`APP_DATABASE_URL` separada de `DATABASE_URL`), Prisma como adaptador (`PrismaService` conecta con rol de runtime), healthcheck `/api/v1/health`, endpoint de ejemplo paginado (temporal, se elimina en Fase 4). Rol `pensiones_app` de mínimo privilegio (`prisma/sql/runtime-role.sql`, `pnpm db:grants`, re-ejecutar tras cada migración): sin DDL, `audit_logs` append-only, `_prisma_migrations` inaccesible — verificado en vivo. Dockerfile dev + servicio `api` en compose (migrate deploy + grants + start). Tests: 21 unit + 5 e2e en verde; lint y `tsc --noEmit` limpios (corregido type error preexistente en `seed.ts`). Revisión con agente code-reviewer: Approve, 0 CRITICAL/HIGH. Pendiente anotado: mover `bcryptjs` a dependencies cuando Fase 3 lo use en runtime. Fase actual pasa a Fase 3. |
+| 2026-07-05 | Fase 3 | Autenticación completa (módulo `identity`, hexagonal): register (solo CLIENT/RESTAURANT_ADMIN), login, refresh con rotación y revocación de familia ante reuso (claim atómico anti-race), logout por familia, `GET /auth/me`, `GET /auth/audit-events` (SUPER_ADMIN). Guards globales deny-by-default (`JwtAuthGuard` + `RolesGuard`: ruta sin `@Roles` ni `@Public` se rechaza), `@CurrentUser`, throttling (global 100/min; register 3, login 5, refresh 10/min; off en test). JWT HS256 15 min payload mínimo (algoritmo pineado), refresh opaco 7 días hasheado SHA-256, bcrypt cost 12, `bcryptjs` movido a dependencies. Auditoría: register/login/login_failed(wrong_password|suspended)/logout/refresh_reuse_detected con dedupe. Revisión security-reviewer: Warn → HIGH corregido (oráculo de timing en login: verify contra hash dummy con email inexistente) + M2/M4/L1/L2 corregidos; M3 (IP/UA en auditoría) y trade-off de refresh concurrente documentados en security.md. Tests: 53 unit + 17 e2e en verde (flujo completo, revocación de familia, rechazo por rol); lint y tsc limpios; verificado en vivo vía Docker Compose. Fase actual pasa a Fase 4. |

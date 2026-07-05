@@ -16,6 +16,12 @@ export const envSchema = z.object({
   APP_DATABASE_URL: z
     .url()
     .startsWith('postgresql://', 'APP_DATABASE_URL must be a postgresql:// URL'),
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+  // Short-lived by design (docs/security.md §4): 15 minutes.
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
 });
 
 export type Env = z.infer<typeof envSchema>;
