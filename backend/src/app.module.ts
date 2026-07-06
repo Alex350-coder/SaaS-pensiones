@@ -4,6 +4,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { MenuModule } from './modules/menu/menu.module';
 import { PensionsModule } from './modules/pensions/pensions.module';
+import { ReservationsModule } from './modules/reservations/reservations.module';
 
 /** Bounded-context modules (src/modules/*) are added here phase by phase. */
 @Module({
@@ -13,6 +14,7 @@ import { PensionsModule } from './modules/pensions/pensions.module';
     CatalogModule,
     MenuModule,
     PensionsModule,
+    ReservationsModule,
   ],
 })
 export class AppModule {}

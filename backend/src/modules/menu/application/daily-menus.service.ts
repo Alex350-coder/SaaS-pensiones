@@ -268,11 +268,14 @@ export class DailyMenusService {
 
   // --- Public ------------------------------------------------------------------
 
-  /** Menú del día: only PUBLISHED menus of APPROVED live restaurants. */
+  /**
+   * Menú del día: only PUBLISHED menus of APPROVED live restaurants. The id
+   * is exposed on purpose: reservations are created against it (Phase 7).
+   */
   async getPublicMenu(
     slug: string,
     dateStr?: string,
-  ): Promise<Omit<OwnerMenuView, 'status' | 'id'>> {
+  ): Promise<Omit<OwnerMenuView, 'status'>> {
     const restaurant = await this.prisma.restaurant.findFirst({
       where: { slug, status: RestaurantStatus.APPROVED, deletedAt: null },
       select: { id: true },
@@ -299,6 +302,7 @@ export class DailyMenusService {
 
     const view = this.toOwnerView(menu);
     return {
+      id: view.id,
       menuDate: view.menuDate,
       menuPrice: view.menuPrice,
       items: view.items,
