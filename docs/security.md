@@ -76,6 +76,27 @@
   contexto de request al `AuditService` en una fase posterior (mejora M3 de la
   revisión de seguridad de Fase 3).
 
+**Trade-offs registrados (Fase 8 — WebSocket):**
+
+- **Sockets de vida larga vs TTL del access token (15 min):** el JWT se
+  verifica una sola vez en el handshake (HS256 pineado, expiración exigida);
+  un socket abierto sigue autorizado tras expirar el token e incluso tras un
+  logout HTTP. Aceptado por ahora (el daño está acotado: solo eventos de chat
+  de conversaciones propias). Mitigación planificada: registro userId→sockets
+  para desconexión forzada en logout/suspensión, o edad máxima de conexión.
+- **Guards globales no cubren gateways:** en esta versión de
+  `@nestjs/websockets` los `APP_GUARD`/`APP_PIPE` globales **no** se ejecutan
+  para `@SubscribeMessage` (verificado empíricamente en la revisión de Fase 8).
+  Por eso el gateway implementa por sí mismo: auth de handshake, rate limit
+  por usuario (`WsRateLimiter`, 30 eventos/10 s, off en test como el throttler
+  HTTP), validación de forma UUID de los ids y `maxHttpBufferSize` de 16 KB
+  (el default de Socket.IO es 1 MB). Regla de revisión: todo gateway nuevo
+  replica este preámbulo; nunca asumir que los guards globales lo protegen.
+- **CORS (HTTP y WS):** sin allow-list de origen todavía; llega con Helmet en
+  la Fase 18 (preparación para producción), cuando exista el origen real del
+  frontend. El riesgo interim es bajo: auth por Bearer/handshake (no cookies),
+  sin CSRF posible.
+
 ### Autorización (RBAC + ownership)
 
 ```text
