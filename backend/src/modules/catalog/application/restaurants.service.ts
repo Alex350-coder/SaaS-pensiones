@@ -303,6 +303,26 @@ export class RestaurantsService {
   }
 
   /**
+   * Cross-context read for Pensions: a pension can only be contracted with
+   * an APPROVED, live restaurant; the price snapshot comes from here.
+   */
+  async findContractableRestaurant(
+    id: string,
+  ): Promise<{ id: string; monthlyPensionPrice: number } | null> {
+    const restaurant = await this.prisma.restaurant.findFirst({
+      where: { id, status: RestaurantStatus.APPROVED, deletedAt: null },
+      select: { id: true, monthlyPensionPrice: true },
+    });
+    if (!restaurant) {
+      return null;
+    }
+    return {
+      id: restaurant.id,
+      monthlyPensionPrice: Number(restaurant.monthlyPensionPrice),
+    };
+  }
+
+  /**
    * Structural-ownership helper for downstream contexts (Menu, Pensions…):
    * resolves the caller's live restaurant id from the JWT identity, so other
    * modules never accept a client-supplied restaurant id for owner actions.

@@ -3,9 +3,16 @@ import { CoreModule } from './core/core.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { MenuModule } from './modules/menu/menu.module';
+import { PensionsModule } from './modules/pensions/pensions.module';
 
 /** Bounded-context modules (src/modules/*) are added here phase by phase. */
 @Module({
-  imports: [CoreModule, IdentityModule, CatalogModule, MenuModule],
+  imports: [
+    CoreModule,
+    IdentityModule,
+    CatalogModule,
+    MenuModule,
+    PensionsModule,
+  ],
 })
 export class AppModule {}

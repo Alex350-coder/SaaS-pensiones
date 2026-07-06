@@ -1,6 +1,7 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuditService } from './audit/audit.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -25,6 +26,7 @@ const GLOBAL_THROTTLE_TTL_MS = 60_000;
   imports: [
     AppConfigModule,
     PrismaModule,
+    ScheduleModule.forRoot(),
     JwtModule.registerAsync({
       global: true,
       inject: [AppConfigService],
