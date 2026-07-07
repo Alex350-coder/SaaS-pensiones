@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../../../../core/audit/audit.service';
 import { RestaurantsService } from '../../../catalog/application/restaurants.service';
 import { PensionSnapshot } from '../../domain/pension';
@@ -36,6 +37,7 @@ const buildFakes = (
   });
 
   const ops: LockedPensionOps = {
+    tx: {} as unknown as Prisma.TransactionClient,
     getPension: () => Promise.resolve({ ...state.pension }),
     sumConfirmedPayments: () => Promise.resolve(state.confirmedTotal),
     createConfirmedPayment: (input) => {
@@ -81,19 +83,31 @@ const buildFakes = (
 
 const buildUseCase = (
   state: FakeState,
-): { useCase: RegisterPaymentUseCase; audit: { record: jest.Mock } } => {
+): {
+  useCase: RegisterPaymentUseCase;
+  audit: { record: jest.Mock };
+  issuer: { issueForPayment: jest.Mock; voidForPension: jest.Mock };
+} => {
   const { repo, audit } = buildFakes(state);
   const restaurants = {
     getOwnRestaurantId: jest.fn().mockResolvedValue('rest-1'),
   } as unknown as RestaurantsService;
+  const issuer = {
+    issueForPayment: jest
+      .fn()
+      .mockResolvedValue({ id: 'inv-1', series: 'F001', number: 1 }),
+    voidForPension: jest.fn().mockResolvedValue(0),
+  };
   return {
     useCase: new RegisterPaymentUseCase(
       repo,
       fakeClock,
+      issuer,
       restaurants,
       audit as unknown as AuditService,
     ),
     audit,
+    issuer,
   };
 };
 
@@ -113,9 +127,9 @@ const pendingPension = (): FakeState => ({
 });
 
 describe('RegisterPaymentUseCase', () => {
-  it('records a partial payment without activating', async () => {
+  it('records a partial payment without activating or invoicing', async () => {
     const state = pendingPension();
-    const { useCase, audit } = buildUseCase(state);
+    const { useCase, audit, issuer } = buildUseCase(state);
 
     const result = await useCase.execute('owner-1', 'pen-1', {
       amount: 100,
@@ -124,6 +138,8 @@ describe('RegisterPaymentUseCase', () => {
 
     expect(result.activated).toBe(false);
     expect(result.paidTotal).toBe(100);
+    expect(result.invoice).toBeUndefined();
+    expect(issuer.issueForPayment).not.toHaveBeenCalled();
     expect(state.pension.status).toBe('PENDING_PAYMENT');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'pension.payment_registered' }),
@@ -133,10 +149,10 @@ describe('RegisterPaymentUseCase', () => {
     );
   });
 
-  it('activates when confirmed payments reach the price: start=today, end=+30', async () => {
+  it('activates and issues one invoice for the full price when payments complete', async () => {
     const state = pendingPension();
     state.confirmedTotal = 100.1;
-    const { useCase, audit } = buildUseCase(state);
+    const { useCase, audit, issuer } = buildUseCase(state);
 
     const result = await useCase.execute('owner-1', 'pen-1', {
       amount: 199.9,
@@ -152,8 +168,18 @@ describe('RegisterPaymentUseCase', () => {
     expect(state.pension.endDate.toISOString()).toBe(
       '2026-08-04T00:00:00.000Z',
     );
+    // Invoice emitted for the activating payment, for the full contracted price.
+    expect(issuer.issueForPayment).toHaveBeenCalledTimes(1);
+    expect(issuer.issueForPayment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ restaurantId: 'rest-1', total: 300 }),
+    );
+    expect(result.invoice).toEqual({ id: 'inv-1', series: 'F001', number: 1 });
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'pension.activated' }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'invoice.issued' }),
     );
   });
 

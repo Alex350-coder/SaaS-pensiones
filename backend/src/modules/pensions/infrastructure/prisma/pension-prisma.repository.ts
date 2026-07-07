@@ -140,6 +140,7 @@ export class PensionPrismaRepository implements PensionRepository {
     pensionId: string,
   ): LockedPensionOps {
     return {
+      tx,
       getPension: async () => {
         const row = await tx.pension.findUnique({ where: { id: pensionId } });
         return row ? this.toSnapshot(row) : null;

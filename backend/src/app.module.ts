@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from './core/core.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { CommunicationModule } from './modules/communication/communication.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -19,6 +20,7 @@ import { ReservationsModule } from './modules/reservations/reservations.module';
     ReservationsModule,
     CommunicationModule,
     AnalyticsModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

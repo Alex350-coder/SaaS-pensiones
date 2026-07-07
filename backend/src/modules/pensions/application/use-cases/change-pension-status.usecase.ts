@@ -7,6 +7,7 @@ import {
   PensionActor,
 } from '../../domain/pension-status.machine';
 import { CLOCK, Clock } from '../ports/clock.port';
+import { INVOICE_ISSUER, InvoiceIssuer } from '../ports/invoice-issuer.port';
 import {
   PENSION_REPOSITORY,
   PensionRepository,
@@ -28,6 +29,7 @@ export class ChangePensionStatusUseCase {
   constructor(
     @Inject(PENSION_REPOSITORY) private readonly pensions: PensionRepository,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(INVOICE_ISSUER) private readonly invoiceIssuer: InvoiceIssuer,
     private readonly restaurants: RestaurantsService,
     private readonly audit: AuditService,
   ) {}
@@ -82,12 +84,22 @@ export class ChangePensionStatusUseCase {
         // in the same transaction. Cancelling ACTIVE/SUSPENDED keeps them —
         // the service was (partially) delivered; refunds are out of scope.
         let voidedPayments = 0;
+        let voidedInvoices = 0;
         if (target === 'CANCELLED' && pension.status === 'PENDING_PAYMENT') {
           voidedPayments = await ops.voidConfirmedPayments();
+          // Payments voided → their invoices are voided in the same tx; the
+          // number is never reused. (No-op today: PENDING pensions have no
+          // invoice yet — kept correct for any future emission/void policy.)
+          if (voidedPayments > 0) {
+            voidedInvoices = await this.invoiceIssuer.voidForPension(
+              ops.tx,
+              pensionId,
+            );
+          }
         }
 
         await ops.updateStatus(target);
-        return { fromStatus: pension.status, voidedPayments };
+        return { fromStatus: pension.status, voidedPayments, voidedInvoices };
       })
       .catch(rethrowDomainError);
 
@@ -101,6 +113,7 @@ export class ChangePensionStatusUseCase {
         to: target,
         actor,
         voidedPayments: outcome.voidedPayments,
+        voidedInvoices: outcome.voidedInvoices,
       },
     });
 

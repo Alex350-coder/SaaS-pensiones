@@ -11,6 +11,11 @@ import { activationPeriod } from '../../domain/pension-dates';
 import { assertTransition } from '../../domain/pension-status.machine';
 import { CLOCK, Clock } from '../ports/clock.port';
 import {
+  INVOICE_ISSUER,
+  InvoiceIssuer,
+  IssuedInvoice,
+} from '../ports/invoice-issuer.port';
+import {
   PaymentSnapshot,
   PENSION_REPOSITORY,
   PensionRepository,
@@ -35,6 +40,8 @@ export interface RegisterPaymentResult {
   payment: PaymentView;
   paidTotal: number;
   activated: boolean;
+  /** Present only when this payment activated the pension (one invoice/pension). */
+  invoice?: IssuedInvoice;
 }
 
 /**
@@ -49,6 +56,7 @@ export class RegisterPaymentUseCase {
   constructor(
     @Inject(PENSION_REPOSITORY) private readonly pensions: PensionRepository,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(INVOICE_ISSUER) private readonly invoiceIssuer: InvoiceIssuer,
     private readonly restaurants: RestaurantsService,
     private readonly audit: AuditService,
   ) {}
@@ -117,6 +125,7 @@ export class RegisterPaymentUseCase {
 
         const paidTotalCents = paidCents + amountCents;
         let activated = false;
+        let invoice: IssuedInvoice | undefined;
         if (paidTotalCents >= priceCents) {
           assertTransition('SYSTEM', pension.status, 'ACTIVE');
           // Clock read INSIDE the lock: even if acquisition straddles UTC
@@ -124,9 +133,17 @@ export class RegisterPaymentUseCase {
           const period = activationPeriod(this.clock.todayUtc());
           await ops.activate(period.startDate, period.endDate);
           activated = true;
+          // Emit the invoice in the SAME transaction (same lock): the
+          // correlative number is assigned atomically, and a rollback of the
+          // activation rolls back the invoice too — never a gap.
+          invoice = await this.invoiceIssuer.issueForPayment(ops.tx, {
+            paymentId: payment.id,
+            restaurantId,
+            total: pension.price,
+          });
         }
 
-        return { payment, paidTotal: paidTotalCents / 100, activated };
+        return { payment, paidTotal: paidTotalCents / 100, activated, invoice };
       })
       .catch(rethrowDomainError);
 
@@ -146,6 +163,19 @@ export class RegisterPaymentUseCase {
         metadata: { paidTotal: outcome.paidTotal },
       });
     }
+    if (outcome.invoice) {
+      await this.audit.record({
+        actorId: ownerId,
+        action: 'invoice.issued',
+        entityType: 'invoice',
+        entityId: outcome.invoice.id,
+        metadata: {
+          pensionId,
+          series: outcome.invoice.series,
+          number: outcome.invoice.number,
+        },
+      });
+    }
 
     const fresh = await this.pensions.findForRestaurant(
       pensionId,
@@ -156,6 +186,7 @@ export class RegisterPaymentUseCase {
       payment: toPaymentView(outcome.payment),
       paidTotal: outcome.paidTotal,
       activated: outcome.activated,
+      invoice: outcome.invoice,
     };
   }
 }

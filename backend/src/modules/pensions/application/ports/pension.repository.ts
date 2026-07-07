@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { PensionSnapshot, PensionStatus } from '../../domain/pension';
 
 export const PENSION_REPOSITORY = Symbol('PENSION_REPOSITORY');
@@ -29,6 +30,12 @@ export interface Page<T> {
 
 /** Operations available while holding the row lock on one pension. */
 export interface LockedPensionOps {
+  /**
+   * The transaction handle backing the lock. Exposed so the payment/void
+   * flows can invoke the InvoiceIssuer port within the SAME transaction —
+   * correlative numbering must be assigned under this lock, not after commit.
+   */
+  readonly tx: Prisma.TransactionClient;
   getPension(): Promise<PensionSnapshot | null>;
   sumConfirmedPayments(): Promise<number>;
   createConfirmedPayment(input: {
