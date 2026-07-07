@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { ConversationsService } from './conversations.service';
+import { NotificationsService } from './notifications.service';
 
 const pensionSelect = {
   id: 'pension-1',
@@ -47,6 +48,7 @@ interface PrismaMock {
 const buildService = (): {
   service: ConversationsService;
   prisma: PrismaMock;
+  notifications: { markReadByRef: jest.Mock };
 } => {
   const prisma: PrismaMock = {
     pension: { findUnique: jest.fn() },
@@ -65,8 +67,12 @@ const buildService = (): {
     $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn((ops: unknown[]) => Promise.all(ops as [])),
   };
-  const service = new ConversationsService(prisma as unknown as PrismaService);
-  return { service, prisma };
+  const notifications = { markReadByRef: jest.fn().mockResolvedValue(0) };
+  const service = new ConversationsService(
+    prisma as unknown as PrismaService,
+    notifications as unknown as NotificationsService,
+  );
+  return { service, prisma, notifications };
 };
 
 describe('ConversationsService', () => {
@@ -224,6 +230,28 @@ describe('ConversationsService', () => {
         senderId: { not: 'client-1' },
         readAt: null,
       });
+    });
+
+    it('clears the NEW_MESSAGE bell entry of the reader (F9 consistency)', async () => {
+      const { service, prisma, notifications } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue({
+        id: 'conv-1',
+        pension: {
+          status: 'ACTIVE',
+          clientId: 'client-1',
+          restaurant: { ownerId: 'owner-1' },
+        },
+      });
+      prisma.message.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.markRead('conv-1', 'client-1');
+
+      expect(notifications.markReadByRef).toHaveBeenCalledWith(
+        'client-1',
+        'NEW_MESSAGE',
+        'conversationId',
+        'conv-1',
+      );
     });
   });
 });

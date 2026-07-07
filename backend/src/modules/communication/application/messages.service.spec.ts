@@ -1,6 +1,7 @@
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { ConversationsService } from './conversations.service';
 import { MessagesService } from './messages.service';
+import { NotificationsService } from './notifications.service';
 
 const messageRow = (
   id: string,
@@ -20,9 +21,20 @@ interface PrismaMock {
   $transaction: jest.Mock;
 }
 
+interface NotificationsMock {
+  hasUnread: jest.Mock;
+  notify: jest.Mock;
+}
+
 const buildService = (options?: {
   writable?: boolean;
-}): { service: MessagesService; prisma: PrismaMock; access: jest.Mock } => {
+  hasUnread?: boolean;
+}): {
+  service: MessagesService;
+  prisma: PrismaMock;
+  access: jest.Mock;
+  notifications: NotificationsMock;
+} => {
   const prisma: PrismaMock = {
     message: { create: jest.fn(), findMany: jest.fn() },
     conversation: { update: jest.fn().mockResolvedValue({}) },
@@ -35,11 +47,16 @@ const buildService = (options?: {
     writable: options?.writable ?? true,
   });
   const conversations = { getAccess: access };
+  const notifications: NotificationsMock = {
+    hasUnread: jest.fn().mockResolvedValue(options?.hasUnread ?? false),
+    notify: jest.fn().mockResolvedValue({}),
+  };
   const service = new MessagesService(
     prisma as unknown as PrismaService,
     conversations as unknown as ConversationsService,
+    notifications as unknown as NotificationsService,
   );
-  return { service, prisma, access };
+  return { service, prisma, access, notifications };
 };
 
 describe('MessagesService', () => {
@@ -71,6 +88,33 @@ describe('MessagesService', () => {
       await expect(
         service.send('conv-1', 'client-1', '   '),
       ).rejects.toMatchObject({ response: { code: 'INVALID_MESSAGE' } });
+    });
+
+    it('notifies the counterpart with a NEW_MESSAGE bell entry', async () => {
+      const { service, prisma, notifications } = buildService();
+      prisma.message.create.mockResolvedValue(messageRow('msg-1', new Date()));
+
+      await service.send('conv-1', 'client-1', 'hola');
+
+      expect(notifications.notify).toHaveBeenCalledWith({
+        userId: 'owner-1',
+        type: 'NEW_MESSAGE',
+        payload: expect.objectContaining({
+          conversationId: 'conv-1',
+          senderId: 'client-1',
+        }),
+      });
+    });
+
+    it('skips the bell entry while one is already unread (dedupe)', async () => {
+      const { service, prisma, notifications } = buildService({
+        hasUnread: true,
+      });
+      prisma.message.create.mockResolvedValue(messageRow('msg-1', new Date()));
+
+      await service.send('conv-1', 'client-1', 'hola de nuevo');
+
+      expect(notifications.notify).not.toHaveBeenCalled();
     });
   });
 

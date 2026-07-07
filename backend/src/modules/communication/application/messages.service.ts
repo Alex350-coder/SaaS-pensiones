@@ -3,10 +3,11 @@ import {
   ConflictException,
   Injectable,
 } from '@nestjs/common';
-import { Message } from '@prisma/client';
+import { Message, NotificationType } from '@prisma/client';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { normalizeMessageContent } from '../domain/conversation-access';
 import { ConversationsService } from './conversations.service';
+import { NotificationsService } from './notifications.service';
 
 export interface MessageView {
   id: string;
@@ -41,6 +42,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Persists one message; the WS gateway broadcasts the returned view. */
@@ -74,7 +76,36 @@ export class MessagesService {
         data: { updatedAt: new Date() },
       }),
     ]);
+    await this.notifyCounterpart(conversationId, senderId, access.counterpartId, message.id);
     return this.toView(message);
+  }
+
+  /**
+   * Bell entry for the recipient, at most one unread per conversation — a
+   * burst of messages must not bury the bell (roadmap F9: mensajes). The
+   * check-then-create pair is not atomic; a concurrent duplicate is a
+   * cosmetic extra bell row, never lost data.
+   */
+  private async notifyCounterpart(
+    conversationId: string,
+    senderId: string,
+    counterpartId: string,
+    messageId: string,
+  ): Promise<void> {
+    const alreadyPending = await this.notifications.hasUnread(
+      counterpartId,
+      NotificationType.NEW_MESSAGE,
+      'conversationId',
+      conversationId,
+    );
+    if (alreadyPending) {
+      return;
+    }
+    await this.notifications.notify({
+      userId: counterpartId,
+      type: NotificationType.NEW_MESSAGE,
+      payload: { conversationId, messageId, senderId },
+    });
   }
 
   /**

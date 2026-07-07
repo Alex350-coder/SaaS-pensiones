@@ -9,10 +9,11 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { AccessTokenPayload, AuthUser } from '../../../core/auth/auth-user';
+import { AuthUser } from '../../../core/auth/auth-user';
 import { AppConfigService } from '../../../core/config/app-config.service';
 import { ConversationsService } from '../application/conversations.service';
 import { MessagesService } from '../application/messages.service';
+import { authenticateSocket, SocketData, socketUser } from './ws-auth';
 import { WsRateLimiter } from './ws-rate-limiter';
 
 /** Ack envelope: the WS mirror of the HTTP {success,data,error} contract. */
@@ -29,11 +30,6 @@ interface JoinPayload {
 interface SendPayload {
   conversationId?: string;
   content?: string;
-}
-
-/** socket.data is `any` in socket.io's types; funnel access through here. */
-interface SocketData {
-  user?: AuthUser;
 }
 
 const room = (conversationId: string): string =>
@@ -106,7 +102,7 @@ export class ChatGateway implements OnGatewayConnection {
     socket: Socket,
     conversationId: unknown,
   ): { user: AuthUser } | { reject: WsAck<never> } {
-    const user = this.socketUser(socket);
+    const user = socketUser(socket);
     if (!user) {
       return { reject: NOT_AUTHENTICATED };
     }
@@ -124,23 +120,12 @@ export class ChatGateway implements OnGatewayConnection {
 
   /** Unauthenticated sockets are dropped before any event handler runs. */
   async handleConnection(socket: Socket): Promise<void> {
-    const token = this.extractToken(socket);
-    if (!token) {
+    const user = await authenticateSocket(socket, this.jwtService, this.config);
+    if (!user) {
       socket.disconnect(true);
       return;
     }
-    try {
-      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(
-        token,
-        {
-          secret: this.config.jwtAccessSecret,
-          algorithms: ['HS256'],
-        },
-      );
-      (socket.data as SocketData).user = { userId: payload.sub, role: payload.role };
-    } catch {
-      socket.disconnect(true);
-    }
+    (socket.data as SocketData).user = user;
   }
 
   @SubscribeMessage('conversation:join')
@@ -244,18 +229,4 @@ export class ChatGateway implements OnGatewayConnection {
     }
   }
 
-  private socketUser(socket: Socket): AuthUser | undefined {
-    return (socket.data as SocketData).user;
-  }
-
-  private extractToken(socket: Socket): string | undefined {
-    const auth = (socket.handshake.auth as { token?: unknown } | undefined)
-      ?.token;
-    if (typeof auth === 'string' && auth.length > 0) {
-      return auth;
-    }
-    const header = socket.handshake.headers.authorization;
-    const [scheme, token] = header?.split(' ') ?? [];
-    return scheme === 'Bearer' ? token : undefined;
-  }
 }

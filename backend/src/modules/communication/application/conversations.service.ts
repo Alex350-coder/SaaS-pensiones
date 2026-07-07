@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PensionStatus, Prisma } from '@prisma/client';
+import { NotificationType, PensionStatus, Prisma } from '@prisma/client';
 import { Paginated, paginated } from '../../../core/http/pagination/paginated';
 import { PaginationQueryDto } from '../../../core/http/pagination/pagination-query.dto';
 import { PrismaService } from '../../../core/prisma/prisma.service';
@@ -12,6 +12,7 @@ import {
   participantSide,
   ParticipantSide,
 } from '../domain/conversation-access';
+import { NotificationsService } from './notifications.service';
 
 export interface ConversationAccess {
   conversationId: string;
@@ -68,7 +69,10 @@ type ConversationRow = Prisma.ConversationGetPayload<{
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /**
    * Opens (or returns) the channel of one pension. Idempotent by design:
@@ -236,6 +240,14 @@ export class ConversationsService {
       },
       data: { readAt: new Date() },
     });
+    // Reading the conversation clears its bell entry (F9: the unread
+    // counter must stay consistent with what the user actually read).
+    await this.notifications.markReadByRef(
+      userId,
+      NotificationType.NEW_MESSAGE,
+      'conversationId',
+      conversationId,
+    );
     return count;
   }
 
