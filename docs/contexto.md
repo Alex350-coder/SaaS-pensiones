@@ -30,6 +30,105 @@ la sección "Registro de avance" al final del documento.
 
 ---
 
+## Kickoff Fase 11 — Facturación simulada
+
+> Punto de partida para implementar la fase. Leer junto con `docs/roadmap.md`
+> (§ Fase 11) y `docs/database-design.md`. Al cerrar la fase, esta sección puede
+> resumirse o eliminarse y su contenido pasa al "Registro de avance".
+
+### Objetivo
+
+Emitir una **factura simulada** al registrar un pago: serie + numeración
+correlativa, generación de PDF e historial consultable. La arquitectura debe
+quedar **desacoplada tras un puerto `InvoiceIssuer`** para reemplazar la
+simulación por un emisor real (SUNAT u otro) sin tocar el dominio.
+
+### Criterios de salida (definición de "hecho")
+
+1. **Numeración correlativa sin huecos ni duplicados bajo concurrencia.**
+2. **PDF descargable desde el historial.**
+
+Ambos deben quedar cubiertos por tests de integración (e2e) y verificados en
+vivo vía Docker, además de unit tests. Mantener lint + tsc limpios y cobertura
+≥ 80% (mismo estándar que fases 9–10).
+
+### La DB ya está lista (NO hay migración)
+
+Las tablas `invoice_series` e `invoice` existen desde la Fase 1 y **ya codifican
+los invariantes de correctitud** (ver `prisma/schema.prisma`):
+
+- `InvoiceSeries`: `nextNumber Int @default(1)`, `@@unique([restaurantId, series])`.
+  → el contador a incrementar de forma atómica; una serie por (restaurante, código).
+- `Invoice`: `@@unique([seriesId, number])` → **la propia DB bloquea números
+  duplicados** (red de seguridad del criterio #1).
+- `Invoice.paymentId @unique` → **una factura por pago = guarda de idempotencia**
+  incorporada (reintentos/dobles emisiones no duplican).
+- `Invoice.status` (`ISSUED` | `VOIDED`), `Invoice.pdfUrl String?` (nullable →
+  el PDF puede generarse on-demand), `Invoice.total Decimal(10,2)`.
+
+### Punto de integración: `register-payment.usecase.ts`
+
+La emisión debe engancharse **dentro de la transacción existente
+`withLockedPension`**, justo después de `createConfirmedPayment`
+(`src/modules/pensions/application/use-cases/register-payment.usecase.ts`, ~L111).
+Motivo: el criterio #1 (sin huecos/duplicados bajo concurrencia) exige asignar
+`nextNumber` de forma atómica **bajo el lock de la pensión**, no con un `count()`
+(que sí produce carreras).
+
+- **Mecanismo de numeración:** `UPDATE invoice_series SET next_number =
+  next_number + 1 WHERE ... RETURNING next_number` (incremento atómico), con
+  `@@unique([seriesId, number])` como red de seguridad. Un número basado en
+  `count()` de facturas es incorrecto.
+- **Los huecos importan:** al anular (`VOIDED`) **no se renumera ni se reutiliza**
+  el número — así "sin huecos ni duplicados" se mantiene honesto.
+
+### Requisito de arquitectura: puerto `InvoiceIssuer`
+
+Definir el puerto en la capa de aplicación y un adaptador `SimulatedInvoiceIssuer`
+que lo implemente ahora; el emisor real se enchufa después sin tocar el dominio.
+**Plantilla ya probada en el repo:** el patrón puerto/adaptador de la Fase 9
+(`NOTIFICATION_PUSHER` Symbol + `useExisting`/`useClass`, ver
+`src/modules/communication/application/notification-pusher.port.ts` y su gateway).
+Reutilizar ese estilo (Symbol de inyección + interfaz + `InputJson` para payload).
+
+- El PDF simulado se genera con una librería local (p. ej. `pdfkit`); no hay
+  almacenamiento de archivos aún.
+- **Descarga (criterio #2):** endpoint que hace *stream* del PDF generado
+  on-demand (dejar `pdfUrl` null) o persistirlo en el volumen Docker. Preferir
+  on-demand para no introducir storage todavía.
+- Nuevo bounded context sugerido: módulo `billing` (o `invoicing`) que depende de
+  `pensions`/`catalog`, nunca al revés — mismo criterio de capas que `analytics`
+  en Fase 10 (evitar ciclos).
+
+### Decisiones a fijar al inicio
+
+| Decisión | Nota / opción por defecto |
+|----------|---------------------------|
+| **¿Factura por pago o solo al activar?** | Esquema es 1:1 pago↔factura (`paymentId @unique`) → cada pago (incluso parcial) emite factura. Confirmar vs. emitir solo al completar el pago. |
+| **Alta de la serie** | ¿Se crea la `InvoiceSeries` de forma perezosa en la 1ª factura, o al aprobar el restaurante? Definir código de serie por defecto (p. ej. `"F001"`). |
+| **Anulación** | Si se anula un pago (`Payment.VOIDED`), ¿se anula su factura (`Invoice.VOIDED`)? El número **no** se reutiliza. |
+| **Entrega del PDF** | On-demand (stream, sin storage) recomendado; alternativa: persistir en volumen y guardar `pdfUrl`. |
+
+### Endpoints previstos (a confirmar en el diseño)
+
+- Restaurante (dueño): historial de facturas emitidas por su restaurante
+  (paginado) + descarga de PDF por factura.
+- Cliente (pensionario): sus facturas (las de sus pagos) + descarga de PDF.
+- La emisión NO es un endpoint propio: ocurre como efecto del registro de pago.
+- Envelope estándar `{ success, data, error }`; `code`s en inglés, mensajes en
+  español; RBAC en cada endpoint; `@Roles` explícito.
+
+### Contexto de estado (dónde retomar)
+
+- Rama `master`, commits por fase. Últimos: `d4ef8` (Fase 9), `53576` (Fase 10).
+- Suite verde previa a la fase: **212 unit + 113 e2e**, lint/tsc limpios.
+- Agentes de review (`code-reviewer`, `security-reviewer`) cayeron por límite de
+  sesión en fases 9–10; la review se hizo inline. Re-ejecutarlos al cerrar F11.
+- Windows + PowerShell 5.1 (sin `&&`); infra vía Docker Compose (rebuild del
+  contenedor `api` para verificación en vivo).
+
+---
+
 ## Visión general
 
 **Pensiones** es una plataforma SaaS que digitaliza el modelo tradicional de
