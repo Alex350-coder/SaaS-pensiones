@@ -21,5 +21,6 @@ import { RestaurantReservationsController } from './presentation/restaurant-rese
     RestaurantReservationsController,
   ],
   providers: [ReservationsService, AttendanceService, ProjectionService],
+  exports: [ProjectionService],
 })
 export class ReservationsModule {}

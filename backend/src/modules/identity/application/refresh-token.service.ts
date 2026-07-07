@@ -96,6 +96,19 @@ export class RefreshTokenService {
     return true;
   }
 
+  /**
+   * Kills every device session of a user (all families). Used when an admin
+   * suspends the account so no stale refresh token can renew access after the
+   * short-lived access token expires.
+   */
+  async revokeAllForUser(userId: string): Promise<number> {
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return result.count;
+  }
+
   private async detectReuse(stored: RefreshToken): Promise<never> {
     const revokedCount = await this.revokeFamily(stored.familyId);
     // Only the request that actually revoked live tokens audits the event,
