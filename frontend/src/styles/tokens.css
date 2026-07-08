@@ -1,0 +1,120 @@
+/**
+ * Design tokens — single source of visual truth (mirrors docs/ui-ux.md).
+ * Style direction: "Calma premium". Light and dark are designed as a pair,
+ * every foreground/background pair verified for WCAG 2.2 AA in both themes.
+ */
+
+:root {
+  /* Brand base */
+  --color-ink: #1f363d;
+
+  /* Primary (actions, links, brand focus) */
+  --color-primary: #40798c;
+  --color-primary-hover: #366678;
+  --color-primary-active: #2c5462;
+  --color-primary-soft: #e5eef1;
+  --color-primary-foreground: #ffffff;
+
+  /* Secondary / informational */
+  --color-secondary: #4f8279;
+  --color-secondary-soft: #e6f0ed;
+
+  /* Accent */
+  --color-accent: #9ec1a3;
+
+  /* Semantic status */
+  --color-success: #3d7d51;
+  --color-success-soft: #eaf3eb;
+  --color-warning: #a16f1f;
+  --color-warning-soft: #f6edd9;
+  --color-danger: #b3452e;
+  --color-danger-soft: #f7e7e2;
+
+  /* Surfaces & text */
+  --color-background: #fafbf8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f3f7f0;
+  --color-text: #1f363d;
+  --color-text-muted: #52666c;
+  --color-border: #dce5e0;
+
+  /* Focus */
+  --color-focus-ring: rgb(64 121 140 / 0.45);
+
+  /* Overlays & glass (subtle, purposeful) */
+  --overlay-scrim: rgb(31 54 61 / 0.55);
+  --gradient-cover: linear-gradient(
+    180deg,
+    rgb(31 54 61 / 0) 38%,
+    rgb(31 54 61 / 0.78) 100%
+  );
+  --glass-bg: rgb(255 255 255 / 0.72);
+  --glass-border: rgb(255 255 255 / 0.4);
+  --glass-blur: 12px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  /* Elevation (tinted with ink, never pure black) */
+  --elevation-1: 0 1px 3px rgb(31 54 61 / 0.08);
+  --elevation-2: 0 4px 10px rgb(31 54 61 / 0.1);
+  --elevation-3: 0 10px 24px rgb(31 54 61 / 0.12);
+  --elevation-4: 0 20px 44px rgb(31 54 61 / 0.16);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  color-scheme: light;
+}
+
+.dark {
+  --color-ink: #14242a;
+
+  --color-primary: #6fa5b8;
+  --color-primary-hover: #82b6c8;
+  --color-primary-active: #5c93a6;
+  --color-primary-soft: #21414b;
+  --color-primary-foreground: #0f1f24;
+
+  --color-secondary: #79b3a9;
+  --color-secondary-soft: #1f3d3a;
+
+  --color-accent: #a9cbae;
+
+  --color-success: #6fb07e;
+  --color-success-soft: #1e3a29;
+  --color-warning: #d9a441;
+  --color-warning-soft: #3a2f14;
+  --color-danger: #e07a63;
+  --color-danger-soft: #40211a;
+
+  --color-background: #14242a;
+  --color-surface: #1f363d;
+  --color-surface-raised: #28444d;
+  --color-text: #e9f0ec;
+  --color-text-muted: #a3b7b3;
+  --color-border: #33555f;
+
+  --color-focus-ring: rgb(111 165 184 / 0.55);
+
+  --overlay-scrim: rgb(6 14 17 / 0.62);
+  --gradient-cover: linear-gradient(
+    180deg,
+    rgb(6 14 17 / 0) 34%,
+    rgb(6 14 17 / 0.85) 100%
+  );
+  --glass-bg: rgb(20 36 42 / 0.66);
+  --glass-border: rgb(233 240 236 / 0.12);
+
+  --elevation-1: 0 1px 3px rgb(0 0 0 / 0.3);
+  --elevation-2: 0 4px 10px rgb(0 0 0 / 0.34);
+  --elevation-3: 0 10px 24px rgb(0 0 0 / 0.4);
+  --elevation-4: 0 20px 44px rgb(0 0 0 / 0.5);
+
+  color-scheme: dark;
+}

@@ -29,6 +29,20 @@ const BCRYPT_COST = 12;
 const PENSION_PRICE = "280.00";
 const MENU_PRICE = "12.00";
 
+/** Optional presentation fields for a restaurant (cover, location, price). */
+interface RestaurantExtras {
+  logoUrl?: string;
+  coverImageUrl?: string;
+  latitude?: string;
+  longitude?: string;
+  monthlyPensionPrice?: string;
+}
+
+/** Unsplash cover, sized/optimized. If a URL 404s, the UI falls back gracefully. */
+function unsplash(id: string, w = 1200): string {
+  return `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=70`;
+}
+
 /** Date-only value at UTC midnight, offset in days from today. */
 function utcDate(offsetDays: number): Date {
   const now = new Date();
@@ -102,6 +116,7 @@ async function upsertRestaurant(
   name: string,
   status: RestaurantStatus,
   address: string,
+  extras: RestaurantExtras = {},
 ): Promise<Restaurant> {
   const data = {
     ownerId,
@@ -112,13 +127,40 @@ async function upsertRestaurant(
     description: `${name} — cocina casera de la casa, menú del día y pensiones mensuales.`,
     contactPhone: "+51 999 111 222",
     contactEmail: `contacto@${slug.replace(/-/g, "")}.dev`,
-    monthlyPensionPrice: PENSION_PRICE,
+    monthlyPensionPrice: extras.monthlyPensionPrice ?? PENSION_PRICE,
+    logoUrl: extras.logoUrl ?? null,
+    coverImageUrl: extras.coverImageUrl ?? null,
+    latitude: extras.latitude ?? null,
+    longitude: extras.longitude ?? null,
   };
   const existing = await prisma.restaurant.findFirst({ where: { slug, deletedAt: null } });
   if (existing) {
     return prisma.restaurant.update({ where: { id: existing.id }, data });
   }
   return prisma.restaurant.create({ data });
+}
+
+/** Fully provision an approved restaurant for the public catalog: profile +
+ *  schedules + dishes + published menus (yesterday..+5). */
+async function provisionApprovedRestaurant(
+  ownerId: string,
+  slug: string,
+  name: string,
+  address: string,
+  extras: RestaurantExtras,
+): Promise<Restaurant> {
+  const restaurant = await upsertRestaurant(
+    ownerId,
+    slug,
+    name,
+    RestaurantStatus.APPROVED,
+    address,
+    extras,
+  );
+  await seedSchedules(restaurant.id);
+  const dishes = await seedDishes(restaurant.id);
+  await seedDailyMenus(restaurant.id, dishes);
+  return restaurant;
 }
 
 async function seedSchedules(restaurantId: string) {
@@ -236,6 +278,12 @@ async function main() {
     "El Fogón Andino",
     RestaurantStatus.APPROVED,
     "Av. Los Incas 742, Cusco",
+    {
+      coverImageUrl: unsplash("1504674900247-0877df9cc836"),
+      latitude: "-13.531950",
+      longitude: "-71.967463",
+      monthlyPensionPrice: "280.00",
+    },
   );
   await upsertRestaurant(
     adminMar.id,
@@ -252,6 +300,78 @@ async function main() {
     "Calle Grau 155, Arequipa",
   );
   await seedSchedules(fogon.id);
+
+  // --- Extra approved restaurants (fuller public catalog) ----------------
+  const extraCatalog: ReadonlyArray<{
+    email: string;
+    owner: string;
+    slug: string;
+    name: string;
+    address: string;
+    extras: RestaurantExtras;
+  }> = [
+    {
+      email: "admin.cevicheria@pensiones.dev",
+      owner: "Lucía Paredes",
+      slug: "la-cevicheria-del-puerto",
+      name: "La Cevichería del Puerto",
+      address: "Av. La Mar 1220, Miraflores, Lima",
+      extras: {
+        coverImageUrl: unsplash("1467003909585-2f8a72700288"),
+        latitude: "-12.046374",
+        longitude: "-77.042793",
+        monthlyPensionPrice: "320.00",
+      },
+    },
+    {
+      email: "admin.nonna@pensiones.dev",
+      owner: "Marco Rossi",
+      slug: "sabores-de-la-nonna",
+      name: "Sabores de la Nonna",
+      address: "Calle Berlín 480, Miraflores, Lima",
+      extras: {
+        coverImageUrl: unsplash("1555396273-367ea4eb4db5"),
+        latitude: "-12.121500",
+        longitude: "-77.030200",
+        monthlyPensionPrice: "300.00",
+      },
+    },
+    {
+      email: "admin.verdementa@pensiones.dev",
+      owner: "Daniela Ríos",
+      slug: "verde-menta",
+      name: "Verde Menta",
+      address: "Av. Pardo 610, Miraflores, Lima",
+      extras: {
+        coverImageUrl: unsplash("1546069901-ba9599a7e63c"),
+        latitude: "-12.115000",
+        longitude: "-77.030000",
+        monthlyPensionPrice: "340.00",
+      },
+    },
+    {
+      email: "admin.brasa@pensiones.dev",
+      owner: "Tomás Aguilar",
+      slug: "brasa-y-carbon",
+      name: "Brasa & Carbón",
+      address: "Calle Mercaderes 210, Arequipa",
+      extras: {
+        coverImageUrl: unsplash("1544025162-d76694265947"),
+        latitude: "-16.409047",
+        longitude: "-71.537451",
+        monthlyPensionPrice: "360.00",
+      },
+    },
+  ];
+  for (const r of extraCatalog) {
+    const owner = await upsertUser(
+      r.email,
+      r.owner,
+      UserRole.RESTAURANT_ADMIN,
+      passwordHash,
+    );
+    await provisionApprovedRestaurant(owner.id, r.slug, r.name, r.address, r.extras);
+  }
 
   // --- Menus -------------------------------------------------------------
   const dishes = await seedDishes(fogon.id);
