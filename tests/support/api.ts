@@ -10,6 +10,7 @@
  * The register endpoint returns a full session, so provisioned actors never
  * spend a login request (the API rate-limits register 3/min and login 5/min).
  */
+import { readFileSync } from 'node:fs';
 import { APIRequestContext, expect } from '@playwright/test';
 import { API_BASE, DEMO_PASSWORD } from './data';
 
@@ -66,6 +67,42 @@ export async function createPendingRestaurant(
     },
   });
   return unwrap<{ id: string; name: string; slug: string }>(res);
+}
+
+/**
+ * Read a role's access token straight from the storageState file written by
+ * `auth.setup.ts`, so authorization specs reuse the existing session instead of
+ * spending a fresh login against the 5/min rate limit.
+ */
+export function accessTokenFromStorage(storageStatePath: string): string {
+  const raw = JSON.parse(readFileSync(storageStatePath, 'utf8')) as {
+    origins: { localStorage: { name: string; value: string }[] }[];
+  };
+  for (const origin of raw.origins) {
+    const entry = origin.localStorage.find(
+      (item) => item.name === 'pensiones.session',
+    );
+    if (!entry) {
+      continue;
+    }
+    const session = JSON.parse(entry.value) as {
+      state: { tokens: { accessToken: string } };
+    };
+    return session.state.tokens.accessToken;
+  }
+  throw new Error(`No pensiones.session token found in ${storageStatePath}`);
+}
+
+/** Log a seeded user in through the API and return its live session. */
+export async function loginUser(
+  request: APIRequestContext,
+  email: string,
+  password: string = DEMO_PASSWORD,
+): Promise<Session> {
+  const res = await request.post(`${API_BASE}/auth/login`, {
+    data: { email, password },
+  });
+  return unwrap<Session>(res);
 }
 
 /** Pick a clean, seeded APPROVED restaurant slug (skips timestamped e2e rows). */
