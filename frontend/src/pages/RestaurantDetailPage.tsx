@@ -5,14 +5,17 @@ import {
   MapPin,
   Phone,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { CoverImage } from '@/components/shared/CoverImage';
 import { ErrorState, StateMessage } from '@/components/shared/state-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MenuOfDay } from '@/features/menus/components/MenuOfDay';
+import { useContractPension } from '@/features/pensions/hooks';
 import { ScheduleList } from '@/features/restaurants/components/ScheduleList';
 import { useRestaurant } from '@/features/restaurants/hooks';
 import { getOpenState } from '@/features/restaurants/schedule';
@@ -20,7 +23,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ApiError } from '@/lib/api-client';
 import type { PublicRestaurantDetail } from '@/lib/api-types';
 import { formatCurrency } from '@/lib/format';
-import { useIsAuthenticated } from '@/stores/session-store';
+import { useSessionStore } from '@/stores/session-store';
 
 function DetailSkeleton() {
   return (
@@ -75,15 +78,37 @@ function DetailHero({ restaurant }: { restaurant: PublicRestaurantDetail }) {
 
 function ContractCard({ restaurant }: { restaurant: PublicRestaurantDetail }) {
   const navigate = useNavigate();
-  const isAuthenticated = useIsAuthenticated();
+  const user = useSessionStore((s) => s.user);
+  const contract = useContractPension();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const isNonClient = user != null && user.role !== 'CLIENT';
 
   const handleContract = () => {
-    if (!isAuthenticated) {
+    if (!user) {
       navigate(`/ingresar?redirect=/restaurantes/${restaurant.slug}`);
       return;
     }
-    // Contracting lives in the private app (Phase 13); be honest about it.
-    toast.info('Muy pronto podrás contratar tu pensión desde tu panel.');
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = () => {
+    contract.mutate(restaurant.id, {
+      onSuccess: () => {
+        toast.success(
+          '¡Pensión contratada! Complétala desde tu panel para activarla.',
+        );
+        navigate('/app');
+      },
+      onError: (error) => {
+        toast.error(
+          error instanceof ApiError
+            ? error.message
+            : 'No se pudo contratar la pensión.',
+        );
+        setConfirmOpen(false);
+      },
+    });
   };
 
   return (
@@ -97,12 +122,31 @@ function ContractCard({ restaurant }: { restaurant: PublicRestaurantDetail }) {
         Incluye tu menú del día durante 30 días. Reserva y confirma tu asistencia
         cada jornada.
       </p>
-      <Button size="lg" className="mt-5 w-full" onClick={handleContract}>
-        Contratar pensión
-      </Button>
+
+      {isNonClient ? (
+        <p className="mt-5 rounded-md bg-surface-raised px-4 py-3 text-center text-sm text-text-muted">
+          Ingresa con una cuenta de cliente para contratar.
+        </p>
+      ) : (
+        <Button size="lg" className="mt-5 w-full" onClick={handleContract}>
+          Contratar pensión
+        </Button>
+      )}
       <p className="mt-3 text-center text-xs text-text-muted">
         Los pagos y las facturas son simulados.
       </p>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={`Contratar pensión en ${restaurant.name}`}
+        description={`Se creará una pensión de 30 días por ${formatCurrency(
+          restaurant.monthlyPensionPrice,
+        )}. Quedará pendiente de pago hasta que el restaurante registre tu pago.`}
+        confirmLabel="Contratar"
+        loading={contract.isPending}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }

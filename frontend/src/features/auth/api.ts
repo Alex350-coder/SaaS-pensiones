@@ -1,6 +1,11 @@
 import { apiFetch } from '@/lib/api-client';
-import type { AuthSession } from '@/lib/api-types';
+import type { AuthSession, MeUser } from '@/lib/api-types';
 import type { LoginValues, RegisterValues } from './schemas';
+
+/** Current user from the access token — used to validate/rehydrate the session. */
+export function getMe(): Promise<MeUser> {
+  return apiFetch<MeUser>('/auth/me');
+}
 
 export function login(values: LoginValues): Promise<AuthSession> {
   return apiFetch<AuthSession>('/auth/login', {

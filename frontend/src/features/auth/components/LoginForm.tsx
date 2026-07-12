@@ -7,10 +7,11 @@ import { PasswordField } from '@/components/forms/PasswordField';
 import { TextField } from '@/components/forms/TextField';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api-client';
+import { roleHomePath } from '@/lib/roles';
 import { useLogin } from '../hooks';
 import { loginSchema, type LoginValues } from '../schemas';
 
-export function LoginForm({ redirectTo = '/' }: { redirectTo?: string }) {
+export function LoginForm({ redirectTo = null }: { redirectTo?: string | null }) {
   const navigate = useNavigate();
   const login = useLogin();
   const {
@@ -27,7 +28,7 @@ export function LoginForm({ redirectTo = '/' }: { redirectTo?: string }) {
     login.mutate(values, {
       onSuccess: (session) => {
         toast.success(`Hola de nuevo, ${session.user.fullName.split(' ')[0]}.`);
-        navigate(redirectTo, { replace: true });
+        navigate(redirectTo ?? roleHomePath(session.user.role), { replace: true });
       },
       onError: (error) => {
         const message =

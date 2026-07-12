@@ -3,15 +3,19 @@ import { AuthShell } from '@/features/auth/components/AuthShell';
 import { RegisterForm } from '@/features/auth/components/RegisterForm';
 import { safeRedirect } from '@/features/auth/safe-redirect';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useIsAuthenticated } from '@/stores/session-store';
+import { roleHomePath } from '@/lib/roles';
+import { useSessionStore } from '@/stores/session-store';
 
 export function RegisterPage() {
   useDocumentTitle('Crear cuenta');
   const [searchParams] = useSearchParams();
-  const redirectTo = safeRedirect(searchParams.get('redirect'));
-  const isAuthenticated = useIsAuthenticated();
+  const explicit = searchParams.get('redirect');
+  const redirectTo = explicit ? safeRedirect(explicit) : null;
+  const user = useSessionStore((s) => s.user);
 
-  if (isAuthenticated) return <Navigate to={redirectTo} replace />;
+  if (user) {
+    return <Navigate to={redirectTo ?? roleHomePath(user.role)} replace />;
+  }
 
   return (
     <AuthShell

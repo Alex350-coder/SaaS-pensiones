@@ -8,6 +8,7 @@ import { TextField } from '@/components/forms/TextField';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api-client';
 import type { UserRole } from '@/lib/api-types';
+import { roleHomePath } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { useRegister } from '../hooks';
 import { registerSchema, type RegisterValues } from '../schemas';
@@ -17,7 +18,11 @@ const ROLE_OPTIONS: { value: Extract<UserRole, 'CLIENT' | 'RESTAURANT_ADMIN'>; l
   { value: 'RESTAURANT_ADMIN', label: 'Tengo un restaurante', hint: 'Quiero ofrecer pensiones', icon: Store },
 ];
 
-export function RegisterForm({ redirectTo = '/' }: { redirectTo?: string }) {
+export function RegisterForm({
+  redirectTo = null,
+}: {
+  redirectTo?: string | null;
+}) {
   const navigate = useNavigate();
   const registerMutation = useRegister();
   const {
@@ -39,7 +44,7 @@ export function RegisterForm({ redirectTo = '/' }: { redirectTo?: string }) {
     registerMutation.mutate(values, {
       onSuccess: (session) => {
         toast.success(`¡Bienvenido/a, ${session.user.fullName.split(' ')[0]}!`);
-        navigate(redirectTo, { replace: true });
+        navigate(redirectTo ?? roleHomePath(session.user.role), { replace: true });
       },
       onError: (error) => {
         if (error instanceof ApiError && /EMAIL/i.test(error.code)) {
