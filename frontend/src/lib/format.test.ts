@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { dayName, formatCurrency, formatMenuDate, formatTime, monogram } from './format';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  dayName,
+  formatClockTime,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatMenuDate,
+  formatRelativeTime,
+  formatTime,
+  monogram,
+} from './format';
 
 describe('formatCurrency', () => {
   it('formats a number as PEN with two decimals', () => {
@@ -49,5 +59,61 @@ describe('monogram', () => {
 
   it('falls back to a placeholder for an empty name', () => {
     expect(monogram('   ')).toBe('?');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-11T12:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('reads sub-minute deltas as "ahora"', () => {
+    expect(formatRelativeTime('2026-07-11T11:59:40Z')).toBe('ahora');
+  });
+
+  it('formats minutes and hours in the past', () => {
+    expect(formatRelativeTime('2026-07-11T11:30:00Z')).toMatch(/min|minuto/);
+    expect(formatRelativeTime('2026-07-11T09:00:00Z')).toMatch(/hora|h/);
+  });
+
+  it('formats days and months', () => {
+    expect(formatRelativeTime('2026-07-09T12:00:00Z')).toMatch(/d|día|anteayer/);
+    expect(formatRelativeTime('2026-05-11T12:00:00Z')).toMatch(/mes/);
+  });
+
+  it('returns empty string for an unparsable timestamp', () => {
+    expect(formatRelativeTime('not-a-date')).toBe('');
+  });
+});
+
+describe('formatDateTime / formatClockTime', () => {
+  it('renders a short absolute date-time', () => {
+    expect(formatDateTime('2026-07-07T11:30:00Z')).toMatch(/jul/);
+  });
+
+  it('renders a clock time for chat bubbles', () => {
+    expect(formatClockTime('2026-07-07T11:30:00Z')).toMatch(/\d/);
+  });
+
+  it('returns empty string on invalid input', () => {
+    expect(formatDateTime('nope')).toBe('');
+    expect(formatClockTime('nope')).toBe('');
+  });
+});
+
+describe('formatDate', () => {
+  it('formats a date-only value at UTC noon (no day shift)', () => {
+    expect(formatDate('2026-07-07')).toMatch(/2026/);
+    expect(formatDate('2026-07-07')).toMatch(/jul/);
+  });
+
+  it('formats a full ISO timestamp', () => {
+    expect(formatDate('2026-07-07T00:00:00Z')).toMatch(/2026/);
+  });
+
+  it('returns empty string on invalid input', () => {
+    expect(formatDate('nope')).toBe('');
   });
 });

@@ -22,3 +22,11 @@ Thumbs.db
 
 # Local Claude config
 .claude/CLAUDE.local.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+/tests/.auth/

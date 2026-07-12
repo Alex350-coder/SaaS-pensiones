@@ -1,0 +1,78 @@
+name: E2E (Playwright)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  e2e:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pensiones
+          POSTGRES_PASSWORD: pensiones
+          POSTGRES_DB: pensiones
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pensiones"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://pensiones:pensiones@localhost:5432/pensiones?schema=public
+      APP_DATABASE_URL: postgresql://pensiones:pensiones@localhost:5432/pensiones?schema=public
+      NODE_ENV: test
+      CI: 'true'
+      # DB is seeded explicitly below; skip the in-suite reseed.
+      E2E_SKIP_SEED: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # Root (Playwright), backend (Nest/Prisma) and frontend (Vite) installs.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --dir backend
+      - run: pnpm install --frozen-lockfile --dir frontend
+
+      # Prisma client + database: migrate, apply runtime grants, seed.
+      - run: pnpm --dir backend db:generate
+      - run: pnpm --dir backend db:deploy
+      - run: pnpm --dir backend db:grants
+      - run: pnpm --dir backend db:seed
+
+      # Build and start the API (background), then wait for its healthcheck.
+      - run: pnpm --dir backend build
+      - name: Start backend
+        run: |
+          pnpm --dir backend start:prod &
+          npx --yes wait-on http://localhost:3000/api/v1/health --timeout 60000
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
