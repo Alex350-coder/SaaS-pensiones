@@ -1,0 +1,43 @@
+# Production image (Phase 18). Multi-stage: a builder with the full toolchain
+# compiles the app; the runner ships only prod dependencies, the built `dist`,
+# and the Prisma client — no source, no tests, no dev tooling — and runs as the
+# non-root `node` user. Prisma (CLI) is a runtime dependency because the
+# container applies migrations + least-privilege grants on startup.
+
+# ---- builder ----------------------------------------------------------------
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY prisma ./prisma
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+COPY src ./src
+RUN pnpm db:generate && pnpm build
+
+# ---- runner -----------------------------------------------------------------
+FROM node:22-alpine AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+RUN corepack enable
+
+# Prod dependencies only (no eslint/jest/typescript/nest-cli/…).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --prod --frozen-lockfile
+
+# Prisma schema + SQL grants; regenerate the client against the prod install.
+COPY prisma ./prisma
+RUN pnpm db:generate
+
+# Compiled application.
+COPY --from=builder /app/dist ./dist
+
+# Drop privileges: the built-in `node` user owns nothing writable in /app.
+USER node
+
+EXPOSE 3000
+
+# Apply migrations + re-assert least-privilege grants, then boot.
+CMD ["sh", "-c", "pnpm db:deploy && pnpm db:grants && node dist/main.js"]

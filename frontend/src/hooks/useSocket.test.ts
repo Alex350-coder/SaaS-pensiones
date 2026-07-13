@@ -18,7 +18,6 @@ import { useSessionStore } from '@/stores/session-store';
 function authenticate() {
   useSessionStore.setState({
     user: { id: 'u1', email: 'a@b.com', fullName: 'A', role: 'CLIENT' } as never,
-    tokens: { accessToken: 'a', refreshToken: 'r' },
   });
 }
 
@@ -26,9 +25,9 @@ describe('useSocket', () => {
   beforeEach(() => {
     Object.values(socket).forEach((fn) => fn.mockClear());
     createNamespaceSocket.mockClear();
-    useSessionStore.setState({ user: null, tokens: null });
+    useSessionStore.setState({ user: null });
   });
-  afterEach(() => useSessionStore.setState({ user: null, tokens: null }));
+  afterEach(() => useSessionStore.setState({ user: null }));
 
   it('does not connect while signed out', () => {
     renderHook(() => useSocket('chat', {}));

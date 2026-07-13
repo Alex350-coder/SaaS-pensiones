@@ -39,7 +39,6 @@ import { useSessionStore } from '@/stores/session-store';
 function authenticate() {
   useSessionStore.setState({
     user: { id: 'u1', email: 'a@b.com', fullName: 'A', role: 'CLIENT' } as never,
-    tokens: { accessToken: 'a', refreshToken: 'r' },
   });
 }
 
@@ -51,7 +50,7 @@ describe('useChatSocket', () => {
     createNamespaceSocket.mockClear();
     authenticate();
   });
-  afterEach(() => useSessionStore.setState({ user: null, tokens: null }));
+  afterEach(() => useSessionStore.setState({ user: null }));
 
   it('connects and joins the active conversation room', () => {
     renderHook(() => useChatSocket('c1', handlers()));
@@ -129,7 +128,7 @@ describe('useChatSocket', () => {
   });
 
   it('does nothing without an authenticated session', () => {
-    useSessionStore.setState({ user: null, tokens: null });
+    useSessionStore.setState({ user: null });
     const { result } = renderHook(() => useChatSocket('c1', handlers()));
     expect(createNamespaceSocket).not.toHaveBeenCalled();
     return expect(result.current.send('x')).resolves.toMatchObject({

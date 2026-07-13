@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuditService } from './audit/audit.service';
+import { CsrfGuard } from './auth/csrf.guard';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { AppConfigModule } from './config/app-config.module';
@@ -63,6 +64,7 @@ const GLOBAL_THROTTLE_TTL_MS = 60_000;
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: CsrfGuard },
   ],
   exports: [AuditService],
 })

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useSessionStore } from '@/stores/session-store';
 
 /**
  * Downloads an authenticated PDF stream (invoices are served with `@Res()`, so
- * they bypass the JSON envelope). Fetches the blob with the bearer token and
- * triggers a browser save. Tracks the in-flight id so a row can show a spinner.
+ * they bypass the JSON envelope). Auth rides the httpOnly `access_token` cookie
+ * (`credentials: 'include'`, same-origin), so no token is read in JS. Tracks
+ * the in-flight id so a row can show a spinner.
  */
 export function usePdfDownload() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -17,9 +17,8 @@ export function usePdfDownload() {
   ): Promise<void> => {
     setDownloadingId(id);
     try {
-      const token = useSessionStore.getState().tokens?.accessToken;
       const res = await fetch(`/api/v1${path}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('pdf-failed');
       const blob = await res.blob();

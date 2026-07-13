@@ -49,40 +49,55 @@ const NETWORK_ERROR = new ApiError(
 export interface RequestOptions {
   method?: string;
   body?: unknown;
-  /** Send the access token (default: true). Public endpoints can opt out. */
+  /**
+   * Whether this call is part of an authenticated flow (default: true). Auth
+   * travels in httpOnly cookies, so this no longer attaches a header — it only
+   * gates the silent-refresh-on-401 retry. Public endpoints opt out.
+   */
   auth?: boolean;
   signal?: AbortSignal;
   /** Internal: prevents infinite refresh recursion. */
   _isRetry?: boolean;
 }
 
-// Single-flight refresh: concurrent 401s share one refresh round-trip.
-let refreshPromise: Promise<string | null> | null = null;
+const CSRF_COOKIE = 'csrf_token';
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-async function refreshAccessToken(): Promise<string | null> {
-  const { tokens, setTokens, clear } = useSessionStore.getState();
-  if (!tokens?.refreshToken) return null;
+/** Read the readable double-submit CSRF token the server set as a cookie. */
+function readCsrfToken(): string | undefined {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+// Single-flight refresh: concurrent 401s share one refresh round-trip.
+let refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Ask the server to rotate the auth cookies using the httpOnly refresh cookie.
+ * No token is read or returned by JS — success just means fresh cookies are
+ * now set. Clears the local session on failure.
+ */
+async function refreshAccessToken(): Promise<boolean> {
+  if (useSessionStore.getState().user === null) return false;
 
   refreshPromise ??= (async () => {
     try {
+      const csrf = readCsrfToken();
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+        credentials: 'include',
+        headers: csrf ? { 'X-CSRF-Token': csrf } : {},
       });
-      const envelope = (await res.json()) as ApiEnvelope<{
-        accessToken: string;
-        refreshToken: string;
-      }>;
-      if (!res.ok || !envelope.success) {
-        clear();
-        return null;
+      if (!res.ok) {
+        useSessionStore.getState().clear();
+        return false;
       }
-      setTokens(envelope.data);
-      return envelope.data.accessToken;
+      return true;
     } catch {
-      clear();
-      return null;
+      useSessionStore.getState().clear();
+      return false;
     } finally {
       refreshPromise = null;
     }
@@ -104,14 +119,19 @@ export async function apiFetch<T>(
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const accessToken = useSessionStore.getState().tokens?.accessToken;
-  if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  // Double-submit CSRF: echo the readable csrf cookie on state-changing calls.
+  if (MUTATING_METHODS.has(method.toUpperCase())) {
+    const csrf = readCsrfToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
 
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
+      // Auth rides httpOnly cookies; always send them (same-origin).
+      credentials: 'include',
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
     });
@@ -120,8 +140,8 @@ export async function apiFetch<T>(
     throw NETWORK_ERROR;
   }
 
-  // Attempt one silent refresh + retry on an expired access token.
-  if (res.status === 401 && auth && accessToken && !_isRetry) {
+  // Attempt one silent cookie refresh + retry on an expired access token.
+  if (res.status === 401 && auth && !_isRetry) {
     const renewed = await refreshAccessToken();
     if (renewed) {
       return apiFetch<T>(path, { ...options, _isRetry: true });

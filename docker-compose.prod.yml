@@ -1,0 +1,67 @@
+# Production stack (Phase 18): Postgres + API + nginx (SPA & reverse proxy).
+# Only the web tier publishes a port; the DB and API stay on the internal
+# network. Secrets come from the environment (see .env.prod.example) — nothing
+# sensitive is committed here.
+#
+#   cp .env.prod.example .env.prod && edit it
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pensiones_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No published ports: reachable only on the internal compose network.
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Migration owner (Prisma CLI: migrate deploy + grants at startup).
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      # Least-privilege runtime role (created by prisma/sql/runtime-role.sql).
+      APP_DATABASE_URL: postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
+      # Same-origin via nginx ⇒ browser never does CORS; keep an allow-list for
+      # any direct/cross-origin client (empty = deny cross-origin).
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # Mark auth cookies Secure — requires the site to be served over HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No published ports: reached only through the nginx reverse proxy.
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-80}:8080"
+
+volumes:
+  pensiones_pgdata:

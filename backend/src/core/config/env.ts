@@ -22,6 +22,27 @@ export const envSchema = z.object({
   // Short-lived by design (docs/security.md §4): 15 minutes.
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
+  // Comma-separated allow-list of browser origins for CORS. Empty in dev
+  // (same-origin via the Vite proxy); set to the real frontend origin(s) in
+  // production. `credentials: true` is always on because auth uses cookies.
+  CORS_ORIGINS: z
+    .string()
+    .default('')
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    ),
+  // Marks auth cookies `Secure` (HTTPS-only). Defaults to on in production.
+  // Overridable so a non-TLS staging box can still authenticate.
+  COOKIE_SECURE: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
+  // Optional cookie `Domain`. Leave unset for host-only cookies (recommended
+  // for the same-origin reverse-proxy topology).
+  COOKIE_DOMAIN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

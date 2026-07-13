@@ -1,20 +1,17 @@
 import { io, type Socket } from 'socket.io-client';
-import { useSessionStore } from '@/stores/session-store';
 
 /**
  * Create a disconnected Socket.IO client for a backend namespace (`chat`,
- * `notifications`). The access token is read fresh on every (re)connection via
- * the `auth` callback, so a silent-refresh rotation is picked up automatically
- * on reconnect. Same-origin in dev: Vite proxies `/socket.io` to Nest, so no
- * CORS is needed (deferred to Phase 18). Caller owns connect/disconnect.
+ * `notifications`). Auth rides the httpOnly `access_token` cookie sent on the
+ * same-origin handshake (`withCredentials`), so no token is read in JS
+ * (docs/security.md A2); a silent-refresh rotation is picked up on the next
+ * reconnect because the browser sends the refreshed cookie automatically.
+ * Same-origin in dev (Vite proxies `/socket.io`) and prod (nginx). Caller owns
+ * connect/disconnect.
  */
 export function createNamespaceSocket(namespace: string): Socket {
   return io(`/${namespace}`, {
     autoConnect: false,
-    // Read the current token on each attempt; reconnects re-authenticate.
-    auth: (cb) => {
-      const token = useSessionStore.getState().tokens?.accessToken ?? '';
-      cb({ token });
-    },
+    withCredentials: true,
   });
 }

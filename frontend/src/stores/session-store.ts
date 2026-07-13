@@ -1,40 +1,37 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AuthSession, SessionUser, TokenPair } from '@/lib/api-types';
+import type { AuthSession, SessionUser } from '@/lib/api-types';
 
 interface SessionState {
   user: SessionUser | null;
-  tokens: TokenPair | null;
-  /** Set the full session after login/register. */
+  /** Set the current user after login/register. */
   setSession: (session: AuthSession) => void;
-  /** Replace only the token pair after a silent refresh rotation. */
-  setTokens: (tokens: TokenPair) => void;
   /** Clear the session (logout, or a failed/expired refresh). */
   clear: () => void;
 }
 
 /**
- * Session state (current user + tokens). Persisted so a reload keeps the user
- * signed in. This is the ONLY client-side copy of the session — server data
- * (restaurants, menus…) lives in TanStack Query, never duplicated here.
+ * Session state (current user only). Auth tokens live in httpOnly cookies the
+ * browser manages — never in JS/`localStorage` (docs/security.md A2, closes
+ * code-review C-1). The persisted `user` is a UX convenience for instant paint
+ * on reload; `useMe` revalidates it against `/auth/me`, and the httpOnly
+ * refresh cookie is what actually keeps the session alive across reloads.
+ * Server data (restaurants, menus…) lives in TanStack Query, never here.
  */
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({
       user: null,
-      tokens: null,
-      setSession: ({ user, accessToken, refreshToken }) =>
-        set({ user, tokens: { accessToken, refreshToken } }),
-      setTokens: (tokens) => set({ tokens }),
-      clear: () => set({ user: null, tokens: null }),
+      setSession: ({ user }) => set({ user }),
+      clear: () => set({ user: null }),
     }),
     {
       name: 'pensiones.session',
-      partialize: (state) => ({ user: state.user, tokens: state.tokens }),
+      partialize: (state) => ({ user: state.user }),
     },
   ),
 );
 
 /** Convenience selector: is there an authenticated user? */
 export const useIsAuthenticated = (): boolean =>
-  useSessionStore((s) => s.user !== null && s.tokens !== null);
+  useSessionStore((s) => s.user !== null);

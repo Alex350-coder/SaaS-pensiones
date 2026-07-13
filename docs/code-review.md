@@ -45,12 +45,12 @@ reintroduce CSRF y exige tokens anti-CSRF + manejo de cookies + CORS con
 credenciales — un cambio de arquitectura de amplio radio. La Fase 15 (security
 review) aceptó conscientemente esta postura.
 
-**Estado: documentado como trade-off aceptado; decisión de re-arquitectura elevada
-al usuario.** Recomendación: evaluar la migración a cookie httpOnly + protección
-CSRF en la **Fase 18** (endurecimiento de producción, donde ya se abordan
-Helmet/CORS/CSP/HSTS). Mitigación interina ya vigente: XSS cerrado por
-output-encoding de React + prohibición de `dangerouslySetInnerHTML` (0 usos, ver
-LOW-1 de security-report) + rotación/revocación de familia + access TTL 15 min.
+**Estado: ✅ CERRADO en Fase 18 (2026-07-13).** Migrado a **cookies httpOnly +
+double-submit CSRF** (decisión del usuario). Los tokens ya no son legibles por
+JS: `access_token`/`refresh_token` son httpOnly (`core/auth/cookies.ts`), el
+`session-store` solo persiste `user`, y el `CsrfGuard` global protege los
+métodos mutantes. La topología same-origin (nginx reverse proxy) mantiene las
+cookies simples y elimina el CORS del navegador. Ver `security-report.md §7`.
 
 ### 🟠 HIGH
 
@@ -63,11 +63,11 @@ eliminó el efecto y se remonta el componente con `key={menu.data.menuDate}` en
 `MenusPage.tsx` (mismo patrón que `SchedulesEditor` con `key={own.data.id}`); el
 estado ya se inicializaba de forma perezosa desde `menu`.
 
-**H-2 — Falta `eslint-plugin-jsx-a11y` en la config de ESLint.** La disciplina de
-a11y actual es buena pero nada la enforce en CI; una regresión futura pasaría el
-lint. **Estado: documentado.** Añadir el plugin implica una devDependency nueva +
-posible oleada de hallazgos existentes que expandiría el alcance. Recomendado como
-tarea de tooling para Fase 17/18 (junto con el resto del endurecimiento de CI).
+**H-2 — Falta `eslint-plugin-jsx-a11y` en la config de ESLint.** ✅ **RESUELTO en
+Fase 18.** Añadido `eslint-plugin-jsx-a11y` (`recommended`) al flat config del
+frontend; un único falso positivo (`heading-has-content` sobre el primitivo
+`CardTitle`, cuyo contenido llega por `{...props}`) se silenció con justificación.
+Lint en verde (0 errores).
 
 ### 🟡 MEDIUM
 
@@ -142,9 +142,34 @@ Falsos positivos verificados y **conservados** (no son código muerto):
   estructurales (`NoticeView` ← `OwnerNoticeView`/`ClientNoticeView`).
 
 Correctitud de dependencias (LOW): `express` se importa directamente (tipos
-`Request`/`Response`) pero no está declarado (satisfecho transitivamente por
-`@nestjs/platform-express`). Recomendado declararlo explícito en **Fase 18** al
-formalizar dependencias; sin riesgo funcional hoy.
+`Request`/`Response`) pero no estaba declarado (satisfecho transitivamente por
+`@nestjs/platform-express`). ✅ **RESUELTO en Fase 18:** `express` declarado
+explícito en `dependencies`; además `prisma` movido a `dependencies` (la imagen
+de producción corre migraciones al arrancar) y `multer` fijado ≥ 2.2.0 (override)
+para dejar `pnpm audit` limpio.
+
+## Addendum Fase 18 — review de endurecimiento (2026-07-13)
+
+Agentes `security-reviewer` + `code-reviewer` (modelo Haiku) sobre el diff de
+Fase 18 (cookies/CSRF, guards, WS terminator, Docker/nginx, logging). **Cero
+CRITICAL/HIGH.** Dos MEDIUM, ambos **corregidos**:
+
+- **Logger de acceso registraba el query string** (`request-logger.middleware.ts`):
+  usaba `req.originalUrl`, contradiciendo su propio invariante "sin query
+  strings". → se recorta con `.split('?', 1)[0]`. Riesgo actual bajo (solo
+  paginación), pero honra el invariante.
+- **Logout sin cookie de refresh omitía la desconexión de sockets**
+  (`auth.controller.ts`/`auth.service.ts`): el controlador solo llamaba a
+  `logout` cuando había refresh token, así que un logout sin cookie limpiaba las
+  cookies HTTP pero dejaba sockets vivos. → el controlador **siempre** invoca
+  `logout(user, token?)`; la revocación de familia es condicional al token, pero
+  `disconnectUser` corre siempre. Verificado con auth+admin e2e (26 en verde).
+
+Prácticas confirmadas correctas por ambos agentes: atributos de cookies, CSRF
+double-submit con comparación timing-safe, pinneo HS256 en HTTP y WS, patrón de
+inyección opcional del puerto, orden de guards (Throttle→Auth→Roles→CSRF), CSP
+sin `unsafe-inline` en scripts, imágenes non-root, y cero exposición de tokens en
+frontend/logs.
 
 ## Verificación
 

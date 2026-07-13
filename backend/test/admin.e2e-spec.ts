@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { accessCookie, refreshCookie } from './support';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -52,9 +53,9 @@ describe('Admin panel — dashboard & user management (e2e)', () => {
       .send({ email, password, fullName, ...(role ? { role } : {}) })
       .expect(201);
     return {
-      token: res.body.data.accessToken,
+      token: accessCookie(res),
       userId: res.body.data.user.id,
-      refreshToken: res.body.data.refreshToken,
+      refreshToken: refreshCookie(res),
     };
   };
 
@@ -130,7 +131,7 @@ describe('Admin panel — dashboard & user management (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({ email: 'superadmin@pensiones.dev', password })
       .expect(200);
-    superToken = superLogin.body.data.accessToken;
+    superToken = accessCookie(superLogin);
     superId = superLogin.body.data.user.id;
 
     ownerAToken = (
@@ -300,7 +301,7 @@ describe('Admin panel — dashboard & user management (e2e)', () => {
 
       await request(http)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: client1Refresh })
+        .set('Cookie', [`refresh_token=${client1Refresh}`])
         .expect(401);
     });
 

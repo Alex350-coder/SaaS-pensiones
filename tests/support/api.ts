@@ -11,23 +11,53 @@
  * spend a login request (the API rate-limits register 3/min and login 5/min).
  */
 import { readFileSync } from 'node:fs';
-import { APIRequestContext, expect } from '@playwright/test';
+import { APIRequestContext, APIResponse, expect } from '@playwright/test';
 import { API_BASE, DEMO_PASSWORD } from './data';
 
 export interface Session {
   user: { id: string; email: string; fullName: string; role: string };
+  // Parsed from the auth cookies the server sets (docs/security.md A2). Kept on
+  // the session object so specs can send `Bearer <token>` (a programmatic-client
+  // fallback the guard accepts, and which skips the CSRF double-submit).
   accessToken: string;
   refreshToken: string;
+  csrfToken: string;
 }
 
 /** Unwrap the `{ success, data, error }` envelope, asserting success. */
-async function unwrap<T>(res: import('@playwright/test').APIResponse): Promise<T> {
+async function unwrap<T>(res: APIResponse): Promise<T> {
   const body = await res.json();
   expect(
     body.success,
     `API call failed: ${res.url()} → ${JSON.stringify(body.error)}`,
   ).toBe(true);
   return body.data as T;
+}
+
+/** Parse a named cookie value from a response's `Set-Cookie` headers. */
+function cookieFromResponse(res: APIResponse, name: string): string {
+  const header = res
+    .headersArray()
+    .find(
+      (h) => h.name.toLowerCase() === 'set-cookie' && h.value.startsWith(`${name}=`),
+    );
+  const value = header?.value.split(';', 1)[0]?.split('=').slice(1).join('=');
+  if (!value) {
+    throw new Error(`Cookie "${name}" not in Set-Cookie of ${res.url()}`);
+  }
+  return decodeURIComponent(value);
+}
+
+/** Build a Session from an auth response: user in the body, tokens in cookies. */
+async function sessionFrom(res: APIResponse): Promise<Session> {
+  // The body envelope's `data` is `{ user }` (tokens are cookie-only now).
+  const { user } = await unwrap<{ user: Session['user'] }>(res);
+  return {
+    user,
+    accessToken: cookieFromResponse(res, 'access_token'),
+    refreshToken: cookieFromResponse(res, 'refresh_token'),
+    csrfToken: cookieFromResponse(res, 'csrf_token'),
+  };
 }
 
 /** Register a fresh user (unique email per run) and return its live session. */
@@ -45,7 +75,7 @@ export async function registerUser(
       role,
     },
   });
-  return unwrap<Session>(res);
+  return sessionFrom(res);
 }
 
 /** Create a PENDING restaurant owned by the given restaurant-admin session. */
@@ -70,27 +100,20 @@ export async function createPendingRestaurant(
 }
 
 /**
- * Read a role's access token straight from the storageState file written by
- * `auth.setup.ts`, so authorization specs reuse the existing session instead of
- * spending a fresh login against the 5/min rate limit.
+ * Read a role's access token from the `access_token` cookie in the storageState
+ * file written by `auth.setup.ts` (auth is cookie-based now, docs/security.md
+ * A2), so authorization specs reuse the existing session instead of spending a
+ * fresh login against the 5/min rate limit.
  */
 export function accessTokenFromStorage(storageStatePath: string): string {
   const raw = JSON.parse(readFileSync(storageStatePath, 'utf8')) as {
-    origins: { localStorage: { name: string; value: string }[] }[];
+    cookies?: { name: string; value: string }[];
   };
-  for (const origin of raw.origins) {
-    const entry = origin.localStorage.find(
-      (item) => item.name === 'pensiones.session',
-    );
-    if (!entry) {
-      continue;
-    }
-    const session = JSON.parse(entry.value) as {
-      state: { tokens: { accessToken: string } };
-    };
-    return session.state.tokens.accessToken;
+  const cookie = (raw.cookies ?? []).find((c) => c.name === 'access_token');
+  if (!cookie) {
+    throw new Error(`No access_token cookie found in ${storageStatePath}`);
   }
-  throw new Error(`No pensiones.session token found in ${storageStatePath}`);
+  return cookie.value;
 }
 
 /** Log a seeded user in through the API and return its live session. */
@@ -102,7 +125,7 @@ export async function loginUser(
   const res = await request.post(`${API_BASE}/auth/login`, {
     data: { email, password },
   });
-  return unwrap<Session>(res);
+  return sessionFrom(res);
 }
 
 /** Pick a clean, seeded APPROVED restaurant slug (skips timestamped e2e rows). */

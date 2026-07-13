@@ -55,4 +55,9 @@ export class NotificationsGateway
     // startup (e.g. an early cron) must not crash the producer.
     this.server?.to(userRoom(userId)).emit('notification:new', notification);
   }
+
+  /** Sever this user's live notification sockets (logout / suspension). */
+  disconnectUser(userId: string): void {
+    this.server?.in(userRoom(userId)).disconnectSockets(true);
+  }
 }

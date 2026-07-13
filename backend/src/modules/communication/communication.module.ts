@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { CoreModule } from '../../core/core.module';
+import { SESSION_TERMINATOR } from '../identity/application/ports/session-terminator.port';
 import { CatalogModule } from '../catalog/catalog.module';
 import { ConversationsService } from './application/conversations.service';
 import { ExpiringPensionsNotifierService } from './application/expiring-pensions-notifier.service';
@@ -7,6 +8,7 @@ import { MessagesService } from './application/messages.service';
 import { NOTIFICATION_PUSHER } from './application/notification-pusher.port';
 import { NotificationsService } from './application/notifications.service';
 import { NoticesService } from './application/notices.service';
+import { CommunicationSessionTerminator } from './infrastructure/communication-session-terminator';
 import { PensionExpiryNotifierJob } from './infrastructure/pension-expiry-notifier.job';
 import { ChatGateway } from './presentation/chat.gateway';
 import { ConversationsController } from './presentation/conversations.controller';
@@ -24,6 +26,7 @@ import { NotificationsGateway } from './presentation/notifications.gateway';
  * services. Notifications reach connected users through the
  * NOTIFICATION_PUSHER port, implemented by the notifications gateway.
  */
+@Global()
 @Module({
   imports: [CoreModule, CatalogModule],
   controllers: [
@@ -42,6 +45,9 @@ import { NotificationsGateway } from './presentation/notifications.gateway';
     ChatGateway,
     NotificationsGateway,
     { provide: NOTIFICATION_PUSHER, useExisting: NotificationsGateway },
+    CommunicationSessionTerminator,
+    { provide: SESSION_TERMINATOR, useExisting: CommunicationSessionTerminator },
   ],
+  exports: [SESSION_TERMINATOR],
 })
 export class CommunicationModule {}

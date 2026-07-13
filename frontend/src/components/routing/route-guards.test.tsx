@@ -14,14 +14,13 @@ function LocationProbe() {
 function signIn(role: 'CLIENT' | 'RESTAURANT_ADMIN' | 'SUPER_ADMIN') {
   useSessionStore.setState({
     user: { id: 'u1', email: 'a@b.com', fullName: 'A', role } as never,
-    tokens: { accessToken: 'a', refreshToken: 'r' },
   });
 }
 
-afterEach(() => useSessionStore.setState({ user: null, tokens: null }));
+afterEach(() => useSessionStore.setState({ user: null }));
 
 describe('RequireAuth', () => {
-  beforeEach(() => useSessionStore.setState({ user: null, tokens: null }));
+  beforeEach(() => useSessionStore.setState({ user: null }));
 
   function renderAt(path: string) {
     return render(
@@ -77,7 +76,7 @@ describe('RequireRole', () => {
   });
 
   it('sends a signed-out user to login', () => {
-    useSessionStore.setState({ user: null, tokens: null });
+    useSessionStore.setState({ user: null });
     renderGuard(['RESTAURANT_ADMIN']);
     expect(screen.getByTestId('path').textContent).toBe('/ingresar');
   });

@@ -27,6 +27,9 @@ const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
+  // Heading content is always supplied by the caller via {...props} (children);
+  // the a11y rule can't see it statically on this generic primitive.
+  // eslint-disable-next-line jsx-a11y/heading-has-content
   <h3
     ref={ref}
     className={cn('text-xl font-semibold leading-tight tracking-tight', className)}

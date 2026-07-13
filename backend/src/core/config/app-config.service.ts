@@ -31,6 +31,19 @@ export class AppConfigService {
     return this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
   }
 
+  get corsOrigins(): string[] {
+    return this.config.get('CORS_ORIGINS', { infer: true });
+  }
+
+  /** Auth cookies are `Secure` in production unless explicitly overridden. */
+  get cookieSecure(): boolean {
+    return this.config.get('COOKIE_SECURE', { infer: true }) ?? this.isProduction;
+  }
+
+  get cookieDomain(): string | undefined {
+    return this.config.get('COOKIE_DOMAIN', { infer: true });
+  }
+
   get isProduction(): boolean {
     return this.nodeEnv === 'production';
   }

@@ -3,6 +3,11 @@
 > **Fase 15 — Revisión de seguridad.** Auditoría del código contra
 > [security.md](security.md) (amenazas A1–A14) y OWASP Top 10 (2021).
 > Fecha: 2026-07-12 · Rama: `master` · Alcance: backend NestJS + frontend React.
+>
+> **Actualización Fase 18 (2026-07-13):** endurecimiento de producción aplicado
+> — ver §7. **C-1 (tokens en `localStorage`) cerrado**: la sesión ahora viaja
+> en cookies httpOnly + double-submit CSRF. Gate de producción de `security.md
+> §6` al 100%. Sin hallazgos CRITICAL/HIGH abiertos.
 
 ---
 
@@ -169,3 +174,23 @@ quedaron **cubiertos por tests E2E adversariales** nuevos
 **Conclusión:** el sistema cumple el criterio de salida de la Fase 15 —
 **cero hallazgos CRITICAL/HIGH**. Los ítems LOW/INFO quedan registrados con su
 fase objetivo.
+
+---
+
+## 7. Endurecimiento de producción (Fase 18 — 2026-07-13)
+
+| Ítem | Estado |
+|------|--------|
+| **C-1 — tokens en `localStorage`** | ✅ **CERRADO.** access + refresh en **cookies httpOnly** (`core/auth/cookies.ts`), ilegibles por JS; el `session-store` solo persiste `user`. `access_token` root-scope (viaja también al handshake WS same-origin), `refresh_token` `SameSite=Strict` acotado a `/api/v1/auth`. |
+| **CSRF (A8)** | ✅ `CsrfGuard` global de double-submit: cookie `csrf_token` legible + header `X-CSRF-Token` en todo método mutante; omite `@Public` y `Bearer` (no ambiental). Cubierto por unit + e2e (`auth.e2e-spec.ts`: sin header → 403, header ≠ cookie → 403, match → 200). |
+| **Helmet / headers (A05)** | ✅ HSTS, `X-Frame-Options: DENY`, nosniff, referrer-policy (`configure-app.ts`). CSP estricta de la SPA servida por nginx. |
+| **CORS** | ✅ allow-list `CORS_ORIGINS` con `credentials:true`; topología same-origin (nginx) elimina el CORS del navegador. |
+| **Desconexión forzada de WS (§4)** | ✅ puerto `SESSION_TERMINATOR` (Identity) implementado por Communication; logout y suspensión Super-Admin cortan todos los sockets del usuario (chat + notificaciones). |
+| **Logging estructurado (A09)** | ✅ JSON por request con `X-Request-Id` (`request-logger.middleware.ts`); sin secretos/bodies. |
+| **`pnpm audit --prod`** | ✅ sin CRITICAL/HIGH (backend + frontend); `multer` fijado ≥ 2.2.0 vía override. |
+| **Contenedores** | ✅ non-root (API `node`, web nginx-unprivileged), multi-stage; el runner de API excluye el toolchain de dev. |
+| **LOW-2 / LOW-3 (Fases 16/17)** | ✅ cerrados previamente (throttle de reservas; purga de refresh tokens). |
+
+El header `Authorization: Bearer` se mantiene como vía **no ambiental** para
+clientes programáticos/móviles (el guard lo acepta; al no viajar en cookie no
+está expuesto a CSRF).

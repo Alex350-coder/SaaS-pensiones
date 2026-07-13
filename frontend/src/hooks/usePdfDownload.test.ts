@@ -13,7 +13,7 @@ describe('usePdfDownload', () => {
   beforeEach(() => {
     toastError.mockClear();
     clickSpy.mockClear();
-    useSessionStore.setState({ tokens: { accessToken: 'tok', refreshToken: 'r' }, user: null });
+    useSessionStore.setState({ user: null });
     URL.createObjectURL = vi.fn(() => 'blob:url');
     URL.revokeObjectURL = vi.fn();
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickSpy);
@@ -21,7 +21,7 @@ describe('usePdfDownload', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    useSessionStore.setState({ tokens: null, user: null });
+    useSessionStore.setState({ user: null });
   });
 
   it('fetches with the bearer token and triggers a download', async () => {
@@ -35,7 +35,7 @@ describe('usePdfDownload', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/invoices/i1/pdf', {
-      headers: { Authorization: 'Bearer tok' },
+      credentials: 'include',
     });
     expect(clickSpy).toHaveBeenCalled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:url');

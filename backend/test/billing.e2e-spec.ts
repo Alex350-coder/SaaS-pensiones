@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { accessCookie } from './support';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -40,7 +41,7 @@ describe('Billing — simulated invoicing (e2e)', () => {
         fullName: `Cliente ${tag}`,
       })
       .expect(201);
-    const token: string = res.body.data.accessToken;
+    const token: string = accessCookie(res);
     return token;
   };
 
@@ -92,7 +93,7 @@ describe('Billing — simulated invoicing (e2e)', () => {
         role: 'RESTAURANT_ADMIN',
       })
       .expect(201);
-    ownerToken = owner.body.data.accessToken;
+    ownerToken = accessCookie(owner);
 
     const created = await request(http)
       .post('/api/v1/restaurants/mine')
@@ -114,7 +115,7 @@ describe('Billing — simulated invoicing (e2e)', () => {
       .expect(200);
     await request(http)
       .patch(`/api/v1/admin/restaurants/${restaurantId}/status`)
-      .set('Authorization', `Bearer ${superAdmin.body.data.accessToken}`)
+      .set('Authorization', `Bearer ${accessCookie(superAdmin)}`)
       .send({ status: 'APPROVED' })
       .expect(200);
   });
@@ -264,7 +265,7 @@ describe('Billing — simulated invoicing (e2e)', () => {
           role: 'RESTAURANT_ADMIN',
         })
         .expect(201);
-      strangerOwnerToken = strangerOwner.body.data.accessToken;
+      strangerOwnerToken = accessCookie(strangerOwner);
       await request(http)
         .post('/api/v1/restaurants/mine')
         .set('Authorization', `Bearer ${strangerOwnerToken}`)

@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { accessCookie } from './support';
 import { Test } from '@nestjs/testing';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
@@ -76,7 +77,7 @@ describe('Communication (e2e)', () => {
       .post('/api/v1/auth/register')
       .send({ email, password, fullName, ...(role ? { role } : {}) })
       .expect(201);
-    return res.body.data.accessToken as string;
+    return accessCookie(res);
   };
 
   beforeAll(async () => {
@@ -117,7 +118,7 @@ describe('Communication (e2e)', () => {
       .expect(200);
     await request(http)
       .patch(`/api/v1/admin/restaurants/${restaurantId}/status`)
-      .set('Authorization', `Bearer ${superAdmin.body.data.accessToken}`)
+      .set('Authorization', `Bearer ${accessCookie(superAdmin)}`)
       .send({ status: 'APPROVED' })
       .expect(200);
 

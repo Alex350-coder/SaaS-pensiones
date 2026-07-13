@@ -9,11 +9,14 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { AppConfigService } from '../config/app-config.service';
 import { AccessTokenPayload, AuthUser } from './auth-user';
+import { readAccessTokenCookie } from './cookies';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
 /**
- * Global authentication guard: every route requires a valid Bearer access
- * token unless marked @Public. Attaches `request.user` (AuthUser).
+ * Global authentication guard: every route requires a valid access token
+ * unless marked @Public. A programmatic client may send a `Bearer` header
+ * (takes precedence); the browser sends an httpOnly `access_token` cookie
+ * (docs/security.md A2). Attaches `request.user` (AuthUser).
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -35,7 +38,12 @@ export class JwtAuthGuard implements CanActivate {
     const request = context
       .switchToHttp()
       .getRequest<Request & { user?: AuthUser }>();
-    const token = this.extractBearerToken(request);
+    // An explicit `Bearer` header wins over the cookie: browsers never send
+    // one (so they always use the httpOnly cookie), while a programmatic client
+    // that sets `Authorization` means it deliberately — it must not be shadowed
+    // by an ambient session cookie.
+    const token =
+      this.extractBearerToken(request) ?? readAccessTokenCookie(request);
     if (!token) {
       throw new UnauthorizedException({
         code: 'MISSING_ACCESS_TOKEN',

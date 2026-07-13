@@ -18,10 +18,9 @@ describe('AccountSummaryCard', () => {
     mockFetch.mockReset();
     useSessionStore.setState({
       user: { id: 'u1', email: 'a@b.com', fullName: 'A', role: 'CLIENT' } as never,
-      tokens: { accessToken: 'a', refreshToken: 'r' },
     });
   });
-  afterEach(() => useSessionStore.setState({ user: null, tokens: null }));
+  afterEach(() => useSessionStore.setState({ user: null }));
 
   it('renders account details from /auth/me', async () => {
     mockFetch.mockResolvedValue({

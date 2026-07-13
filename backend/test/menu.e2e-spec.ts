@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { accessCookie } from './support';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -41,7 +42,7 @@ describe('Menu management (e2e)', () => {
         role: 'RESTAURANT_ADMIN',
       })
       .expect(201);
-    ownerToken = registered.body.data.accessToken;
+    ownerToken = accessCookie(registered);
 
     const created = await request(http)
       .post('/api/v1/restaurants/mine')
@@ -63,7 +64,7 @@ describe('Menu management (e2e)', () => {
       .expect(200);
     await request(http)
       .patch(`/api/v1/admin/restaurants/${created.body.data.id}/status`)
-      .set('Authorization', `Bearer ${login.body.data.accessToken}`)
+      .set('Authorization', `Bearer ${accessCookie(login)}`)
       .send({ status: 'APPROVED' })
       .expect(200);
   });
@@ -128,7 +129,7 @@ describe('Menu management (e2e)', () => {
 
       await request(http)
         .post('/api/v1/restaurants/mine/dishes')
-        .set('Authorization', `Bearer ${client.body.data.accessToken}`)
+        .set('Authorization', `Bearer ${accessCookie(client)}`)
         .send({ name: 'Hack', category: 'MAIN', price: 1 })
         .expect(403);
     });

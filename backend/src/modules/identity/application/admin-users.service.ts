@@ -1,14 +1,20 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { User, UserRole, UserStatus } from '@prisma/client';
 import { AuditService } from '../../../core/audit/audit.service';
 import { Paginated, paginated } from '../../../core/http/pagination/paginated';
 import { PaginationQueryDto } from '../../../core/http/pagination/pagination-query.dto';
 import { PrismaService } from '../../../core/prisma/prisma.service';
+import {
+  SESSION_TERMINATOR,
+  SessionTerminator,
+} from './ports/session-terminator.port';
 import { RefreshTokenService } from './refresh-token.service';
 
 export interface AdminUserView {
@@ -48,6 +54,10 @@ export class AdminUsersService {
     private readonly prisma: PrismaService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly audit: AuditService,
+    // Optional: Communication binds the realtime adapter; absent in unit tests.
+    @Optional()
+    @Inject(SESSION_TERMINATOR)
+    private readonly sessionTerminator?: SessionTerminator,
   ) {}
 
   async list(
@@ -108,6 +118,10 @@ export class AdminUsersService {
       target === UserStatus.SUSPENDED
         ? await this.refreshTokens.revokeAllForUser(user.id)
         : 0;
+    if (target === UserStatus.SUSPENDED) {
+      // Drop live sockets too, not just the refresh-token family.
+      this.sessionTerminator?.disconnectUser(user.id);
+    }
 
     await this.audit.record({
       actorId,

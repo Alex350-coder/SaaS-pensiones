@@ -1,4 +1,10 @@
 import { INestApplication } from '@nestjs/common';
+import {
+  accessCookie,
+  csrfCookie,
+  refreshCookie,
+  sessionCookies,
+} from './support';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -48,8 +54,8 @@ describe('Auth (e2e)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.user).toMatchObject({ email, role: 'CLIENT' });
       expect(res.body.data.user).not.toHaveProperty('passwordHash');
-      expect(typeof res.body.data.accessToken).toBe('string');
-      expect(typeof res.body.data.refreshToken).toBe('string');
+      expect(typeof accessCookie(res)).toBe('string');
+      expect(typeof refreshCookie(res)).toBe('string');
     });
 
     it('rejects a duplicate registration with EMAIL_TAKEN', async () => {
@@ -90,8 +96,8 @@ describe('Auth (e2e)', () => {
         .send({ email, password })
         .expect(200);
 
-      accessToken = res.body.data.accessToken;
-      refreshToken = res.body.data.refreshToken;
+      accessToken = accessCookie(res);
+      refreshToken = refreshCookie(res);
       expect(res.body.data.user.email).toBe(email);
     });
 
@@ -107,27 +113,27 @@ describe('Auth (e2e)', () => {
     it('rotates the refresh token', async () => {
       const res = await request(http)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken })
+        .set('Cookie', [`refresh_token=${refreshToken}`])
         .expect(200);
 
-      expect(typeof res.body.data.accessToken).toBe('string');
-      expect(res.body.data.refreshToken).not.toBe(refreshToken);
+      expect(typeof accessCookie(res)).toBe('string');
+      expect(refreshCookie(res)).not.toBe(refreshToken);
 
       // Keep the newest token for the logout step.
-      refreshToken = res.body.data.refreshToken;
-      accessToken = res.body.data.accessToken;
+      refreshToken = refreshCookie(res);
+      accessToken = accessCookie(res);
     });
 
     it('logs out and the refresh token stops working', async () => {
       await request(http)
         .post('/api/v1/auth/logout')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ refreshToken })
+        .set('Cookie', [`refresh_token=${refreshToken}`])
         .expect(200);
 
       const res = await request(http)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken })
+        .set('Cookie', [`refresh_token=${refreshToken}`])
         .expect(401);
 
       expect(res.body.error.code).toBe('INVALID_REFRESH_TOKEN');
@@ -141,25 +147,25 @@ describe('Auth (e2e)', () => {
         .post('/api/v1/auth/register')
         .send({ email: theftEmail, password, fullName: 'Theft Victim' })
         .expect(201);
-      const stolen = registered.body.data.refreshToken;
+      const stolen = refreshCookie(registered);
 
       // Legitimate rotation: `stolen` is now consumed.
       const rotated = await request(http)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: stolen })
+        .set('Cookie', [`refresh_token=${stolen}`])
         .expect(200);
-      const newest = rotated.body.data.refreshToken;
+      const newest = refreshCookie(rotated);
 
       // Attacker replays the consumed token → 401 + family revoked.
       await request(http)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: stolen })
+        .set('Cookie', [`refresh_token=${stolen}`])
         .expect(401);
 
       // The newest (legitimate) token is dead too: the family is gone.
       const res = await request(http)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: newest })
+        .set('Cookie', [`refresh_token=${newest}`])
         .expect(401);
       expect(res.body.error.code).toBe('INVALID_REFRESH_TOKEN');
     });
@@ -184,7 +190,7 @@ describe('Auth (e2e)', () => {
 
       const res = await request(http)
         .get('/api/v1/auth/audit-events')
-        .set('Authorization', `Bearer ${login.body.data.accessToken}`)
+        .set('Authorization', `Bearer ${accessCookie(login)}`)
         .expect(403);
 
       expect(res.body.error).toEqual({
@@ -201,7 +207,7 @@ describe('Auth (e2e)', () => {
 
       const res = await request(http)
         .get('/api/v1/auth/audit-events')
-        .set('Authorization', `Bearer ${login.body.data.accessToken}`)
+        .set('Authorization', `Bearer ${accessCookie(login)}`)
         .query({ page: 1, limit: 5 })
         .expect(200);
 
@@ -211,6 +217,46 @@ describe('Auth (e2e)', () => {
         (item: { action: string }) => item.action,
       );
       expect(actions.some((a: string) => a.startsWith('auth.'))).toBe(true);
+    });
+  });
+
+  // Cookie-based browser flow: mutating requests need the double-submit CSRF
+  // header (docs/security.md A8). The Bearer path above skips CSRF by design.
+  describe('CSRF double-submit (cookie auth)', () => {
+    async function freshSession(): Promise<request.Response> {
+      const csrfEmail = `e2e.csrf.${Date.now()}@pensiones.dev`;
+      return request(http)
+        .post('/api/v1/auth/register')
+        .send({ email: csrfEmail, password, fullName: 'CSRF Tester' })
+        .expect(201);
+    }
+
+    it('rejects a mutating cookie request with no CSRF header (403)', async () => {
+      const session = await freshSession();
+      const res = await request(http)
+        .post('/api/v1/auth/logout')
+        .set('Cookie', sessionCookies(session))
+        .expect(403);
+
+      expect(res.body.error.code).toBe('CSRF_TOKEN_INVALID');
+    });
+
+    it('rejects a CSRF header that does not match the cookie (403)', async () => {
+      const session = await freshSession();
+      await request(http)
+        .post('/api/v1/auth/logout')
+        .set('Cookie', sessionCookies(session))
+        .set('X-CSRF-Token', 'not-the-cookie-value')
+        .expect(403);
+    });
+
+    it('accepts a mutating cookie request when header matches cookie (200)', async () => {
+      const session = await freshSession();
+      await request(http)
+        .post('/api/v1/auth/logout')
+        .set('Cookie', sessionCookies(session))
+        .set('X-CSRF-Token', csrfCookie(session))
+        .expect(200);
     });
   });
 });

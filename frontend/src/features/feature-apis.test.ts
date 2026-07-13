@@ -146,10 +146,10 @@ describe('auth api', () => {
     expect(lastOpts()!.body).toMatchObject({ phone: '999' });
   });
 
-  it('logs out with the refresh token', async () => {
-    await auth.logout('rt');
+  it('logs out (refresh token rides the httpOnly cookie)', async () => {
+    await auth.logout();
     expect(lastPath()).toBe('/auth/logout');
-    expect(lastOpts()).toEqual({ method: 'POST', body: { refreshToken: 'rt' } });
+    expect(lastOpts()).toEqual({ method: 'POST' });
   });
 });
 

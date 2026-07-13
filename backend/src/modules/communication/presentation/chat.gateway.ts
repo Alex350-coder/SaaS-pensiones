@@ -35,6 +35,9 @@ interface SendPayload {
 const room = (conversationId: string): string =>
   `conversation:${conversationId}`;
 
+/** Per-user room so a session can be force-disconnected on logout/suspension. */
+const userRoom = (userId: string): string => `user:${userId}`;
+
 const ok = <T>(data: T): WsAck<T> => ({ success: true, data, error: null });
 
 const fail = (code: string, message: string): WsAck<never> => ({
@@ -126,6 +129,13 @@ export class ChatGateway implements OnGatewayConnection {
       return;
     }
     (socket.data as SocketData).user = user;
+    // Join a per-user room so logout/suspension can force-disconnect.
+    await socket.join(userRoom(user.userId));
+  }
+
+  /** Sever this user's live chat sockets (logout / suspension). */
+  disconnectUser(userId: string): void {
+    this.server?.in(userRoom(userId)).disconnectSockets(true);
   }
 
   @SubscribeMessage('conversation:join')

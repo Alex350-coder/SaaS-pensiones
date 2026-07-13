@@ -1,8 +1,10 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, User, UserRole } from '@prisma/client';
@@ -14,6 +16,10 @@ import { PrismaService } from '../../../core/prisma/prisma.service';
 import { LoginDto } from '../presentation/dto/login.dto';
 import { RegisterDto } from '../presentation/dto/register.dto';
 import { PasswordService } from './password.service';
+import {
+  SESSION_TERMINATOR,
+  SessionTerminator,
+} from './ports/session-terminator.port';
 import { RefreshTokenService } from './refresh-token.service';
 import { TokenService } from './token.service';
 
@@ -64,6 +70,10 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly audit: AuditService,
+    // Optional: Communication binds the realtime adapter; absent in unit tests.
+    @Optional()
+    @Inject(SESSION_TERMINATOR)
+    private readonly sessionTerminator?: SessionTerminator,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthSession> {
@@ -157,19 +167,28 @@ export class AuthService {
     return { accessToken, refreshToken: rotation.token };
   }
 
-  async logout(authUser: AuthUser, rawRefreshToken: string): Promise<void> {
-    const revoked = await this.refreshTokens.revokeFamilyOf(
-      rawRefreshToken,
-      authUser.userId,
-    );
-    if (revoked) {
-      await this.audit.record({
-        actorId: authUser.userId,
-        action: 'auth.logout',
-        entityType: 'user',
-        entityId: authUser.userId,
-      });
+  async logout(
+    authUser: AuthUser,
+    rawRefreshToken: string | undefined,
+  ): Promise<void> {
+    if (rawRefreshToken) {
+      const revoked = await this.refreshTokens.revokeFamilyOf(
+        rawRefreshToken,
+        authUser.userId,
+      );
+      if (revoked) {
+        await this.audit.record({
+          actorId: authUser.userId,
+          action: 'auth.logout',
+          entityType: 'user',
+          entityId: authUser.userId,
+        });
+      }
     }
+    // Always sever live sockets so realtime access dies with the session
+    // (docs/security.md §4) — even if the refresh cookie is missing — not only
+    // at the 15-min access-token TTL.
+    this.sessionTerminator?.disconnectUser(authUser.userId);
   }
 
   async me(authUser: AuthUser): Promise<PublicUser & { phone: string | null }> {

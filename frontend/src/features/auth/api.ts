@@ -32,9 +32,7 @@ export function register(values: RegisterValues): Promise<AuthSession> {
   });
 }
 
-export function logout(refreshToken: string): Promise<null> {
-  return apiFetch<null>('/auth/logout', {
-    method: 'POST',
-    body: { refreshToken },
-  });
+export function logout(): Promise<null> {
+  // The refresh token rides the httpOnly cookie; the server reads it there.
+  return apiFetch<null>('/auth/logout', { method: 'POST' });
 }

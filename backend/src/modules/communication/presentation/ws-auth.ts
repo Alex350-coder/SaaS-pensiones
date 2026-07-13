@@ -45,5 +45,25 @@ function extractToken(socket: Socket): string | undefined {
   }
   const header = socket.handshake.headers.authorization;
   const [scheme, token] = header?.split(' ') ?? [];
-  return scheme === 'Bearer' ? token : undefined;
+  if (scheme === 'Bearer' && token) {
+    return token;
+  }
+  // Browser clients: the httpOnly `access_token` cookie rides the same-origin
+  // handshake automatically (docs/security.md A2). The `auth.token`/Bearer
+  // paths above remain for programmatic clients and tests.
+  return cookieToken(socket, 'access_token');
+}
+
+function cookieToken(socket: Socket, name: string): string | undefined {
+  const raw = socket.handshake.headers.cookie;
+  if (!raw) {
+    return undefined;
+  }
+  for (const part of raw.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name && rest.length > 0) {
+      return decodeURIComponent(rest.join('='));
+    }
+  }
+  return undefined;
 }

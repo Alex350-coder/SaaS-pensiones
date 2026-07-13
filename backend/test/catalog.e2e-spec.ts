@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { accessCookie } from './support';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -31,7 +32,7 @@ describe('Restaurant catalog (e2e)', () => {
       .post('/api/v1/auth/register')
       .send({ email, password, fullName: `E2E ${role}`, role })
       .expect(201);
-    return res.body.data.accessToken as string;
+    return accessCookie(res);
   };
 
   const publicSlugs = async (): Promise<string[]> => {
@@ -66,7 +67,7 @@ describe('Restaurant catalog (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({ email: 'superadmin@pensiones.dev', password })
       .expect(200);
-    superAdminToken = login.body.data.accessToken;
+    superAdminToken = accessCookie(login);
   });
 
   afterAll(async () => {

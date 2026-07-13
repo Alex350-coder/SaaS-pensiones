@@ -47,12 +47,11 @@ beforeEach(() => {
       fullName: 'Ada',
       role: 'CLIENT',
     } as never,
-    tokens: { accessToken: 'a', refreshToken: 'r' },
   });
 });
 
 afterEach(() => {
-  useSessionStore.setState({ user: null, tokens: null });
+  useSessionStore.setState({ user: null });
 });
 
 /** Mount a query hook and wait until its queryFn has resolved. */

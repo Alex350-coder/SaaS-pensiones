@@ -13,15 +13,25 @@ const fail = (code: string, message: string, status: number, details?: unknown) 
 function authenticate() {
   useSessionStore.setState({
     user: { id: 'u1', email: 'a@b.com', fullName: 'A', role: 'CLIENT' } as never,
-    tokens: { accessToken: 'access-1', refreshToken: 'refresh-1' },
+  });
+}
+
+function setCsrfCookie(value: string | null) {
+  Object.defineProperty(document, 'cookie', {
+    configurable: true,
+    get: () => (value === null ? '' : `csrf_token=${value}`),
+    set: () => undefined,
   });
 }
 
 describe('apiFetch', () => {
-  beforeEach(() => useSessionStore.setState({ user: null, tokens: null }));
+  beforeEach(() => {
+    useSessionStore.setState({ user: null });
+    setCsrfCookie(null);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
-    useSessionStore.setState({ user: null, tokens: null });
+    useSessionStore.setState({ user: null });
   });
 
   it('unwraps the envelope data on success', async () => {
@@ -29,7 +39,7 @@ describe('apiFetch', () => {
     await expect(apiFetch('/x', { auth: false })).resolves.toEqual({ id: '1' });
   });
 
-  it('attaches the bearer token and prefixes the API base', async () => {
+  it('always sends cookies (credentials: include) and prefixes the API base', async () => {
     authenticate();
     const fetchMock = vi.fn().mockResolvedValue(ok(null));
     vi.stubGlobal('fetch', fetchMock);
@@ -37,15 +47,27 @@ describe('apiFetch', () => {
     await apiFetch('/auth/me');
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/v1/auth/me');
-    expect(init.headers.Authorization).toBe('Bearer access-1');
+    expect(init.credentials).toBe('include');
+    // No Authorization header: auth is cookie-based now.
+    expect(init.headers.Authorization).toBeUndefined();
   });
 
-  it('omits the bearer token when auth is false', async () => {
-    authenticate();
+  it('echoes the CSRF cookie in X-CSRF-Token on mutating requests', async () => {
+    setCsrfCookie('csrf-abc');
+    const fetchMock = vi.fn().mockResolvedValue(ok(null));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await apiFetch('/x', { method: 'POST', body: { a: 1 }, auth: false });
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.headers['X-CSRF-Token']).toBe('csrf-abc');
+  });
+
+  it('does not add a CSRF header on safe (GET) requests', async () => {
+    setCsrfCookie('csrf-abc');
     const fetchMock = vi.fn().mockResolvedValue(ok(null));
     vi.stubGlobal('fetch', fetchMock);
     await apiFetch('/restaurants', { auth: false });
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBeUndefined();
+    expect(fetchMock.mock.calls[0][1].headers['X-CSRF-Token']).toBeUndefined();
   });
 
   it('serializes a JSON body with the content-type header', async () => {
@@ -104,16 +126,16 @@ describe('apiFetch', () => {
       .fn()
       // 1. original request → 401
       .mockResolvedValueOnce(jsonRes({ success: false, data: null, error: { code: 'TOKEN_EXPIRED', message: 'x' } }, { ok: false, status: 401 }))
-      // 2. POST /auth/refresh → new tokens
-      .mockResolvedValueOnce(ok({ accessToken: 'access-2', refreshToken: 'refresh-2' }))
+      // 2. POST /auth/refresh → 200 (cookies rotated server-side, no body needed)
+      .mockResolvedValueOnce(jsonRes({ success: true, data: null, error: null }))
       // 3. retried request → success
       .mockResolvedValueOnce(ok({ id: 'after-refresh' }));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(apiFetch('/protected')).resolves.toEqual({ id: 'after-refresh' });
     expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/auth/refresh');
-    // Rotation persisted for the retry.
-    expect(useSessionStore.getState().tokens?.accessToken).toBe('access-2');
+    // Session still authenticated after the successful refresh.
+    expect(useSessionStore.getState().user).not.toBeNull();
   });
 
   it('clears the session and surfaces the 401 when refresh fails', async () => {
@@ -126,6 +148,17 @@ describe('apiFetch', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(apiFetch('/protected')).rejects.toBeInstanceOf(ApiError);
-    expect(useSessionStore.getState().tokens).toBeNull();
+    expect(useSessionStore.getState().user).toBeNull();
+  });
+
+  it('does not attempt a refresh when there is no local session', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonRes({ success: false, data: null, error: { code: 'MISSING_ACCESS_TOKEN', message: 'x' } }, { ok: false, status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiFetch('/protected')).rejects.toBeInstanceOf(ApiError);
+    // Only the original call — no /auth/refresh round-trip.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

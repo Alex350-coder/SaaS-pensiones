@@ -47,11 +47,8 @@ export function useLogout() {
 
   return useMutation<void, Error, void>({
     mutationFn: async () => {
-      const refreshToken = useSessionStore.getState().tokens?.refreshToken;
-      if (refreshToken) {
-        // A failed revocation must not block the user from signing out locally.
-        await authApi.logout(refreshToken).catch(() => undefined);
-      }
+      // A failed revocation must not block the user from signing out locally.
+      await authApi.logout().catch(() => undefined);
     },
     onSettled: () => {
       clear();

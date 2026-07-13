@@ -19,12 +19,12 @@ export interface SessionUser {
   role: UserRole;
 }
 
-export interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export interface AuthSession extends TokenPair {
+/**
+ * `POST /auth/{login,register}` response body. Tokens are NOT here — they are
+ * set as httpOnly cookies by the server (docs/security.md A2); the browser
+ * never sees them in JS. The body carries only the user.
+ */
+export interface AuthSession {
   user: SessionUser;
 }
 

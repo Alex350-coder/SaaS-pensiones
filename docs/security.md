@@ -22,13 +22,13 @@
 | # | Amenaza | Vector | Mitigación |
 |---|---------|--------|------------|
 | A1 | Robo de cuenta | Credential stuffing / brute force en login | Rate limiting agresivo en `/auth/*`, bcrypt (cost ≥ 12), bloqueo progresivo, mensajes de error que no revelan si el email existe |
-| A2 | Robo/replay de refresh token | XSS, filtración de storage | Rotación con `family_id`: reutilización de un token ya rotado ⇒ revocación de la familia completa; tokens hasheados en DB |
+| A2 | Robo/replay de refresh token | XSS, filtración de storage | Tokens en **cookies httpOnly** (ningún script del origen los lee — cierra C-1); rotación con `family_id`: reutilización de un token ya rotado ⇒ revocación de la familia completa; refresh hasheado en DB (SHA-256); access token TTL 15 min |
 | A3 | Escalada horizontal | Cliente A accede a pensión/chat/facturas del cliente B manipulando IDs | **Ownership check en cada caso de uso** (no solo el guard de rol); IDs UUID no enumerables; tests de autorización por recurso |
 | A4 | Escalada vertical | CLIENT invoca endpoints de admin | RBAC con guards por defecto **deny**: todo endpoint exige rol explícito; el super admin es el único que muta estados de restaurante |
 | A5 | Restaurante fraudulento | Alta de restaurante falso que capta pagos | Flujo de aprobación por Super Admin (`PENDING` no es visible ni contratable); suspensión inmediata con efecto en catálogo y contratación |
 | A6 | Inyección SQL | Inputs en filtros/búsquedas | Prisma parametriza todo; prohibido `$queryRawUnsafe`; `$queryRaw` solo con template literals parametrizados y revisión |
 | A7 | XSS almacenado | Chat, descripciones de restaurante, avisos | Estrategia anti-XSS = **codificación en salida (output-encoding)**: React escapa por defecto y **`dangerouslySetInnerHTML` está prohibido** (cero usos) — no se renderiza HTML de usuario. Los DTOs validan y recortan el texto libre en el borde. CSP en producción. No se sanitiza la entrada porque no hay render de HTML de usuario (un sanitizador sería YAGNI; ver `security-report.md` LOW-1) |
-| A8 | CSRF | Acciones con sesión implícita | API stateless con `Authorization: Bearer` (sin cookies de sesión) ⇒ CSRF neutralizado por diseño; CORS restrictivo al origen del frontend |
+| A8 | CSRF | Acciones con sesión implícita | Auth por **cookies httpOnly** (Fase 18) ⇒ la sesión es ambiental, así que se protege con **double-submit CSRF**: cookie `csrf_token` legible + header `X-CSRF-Token` verificados en todo método mutante (`CsrfGuard`), reforzado por `SameSite` (Strict en refresh, Lax en access/csrf). El header `Bearer` (cliente programático) no es ambiental y omite CSRF. CORS restrictivo por allow-list; topología same-origin (nginx) elimina el CORS del navegador |
 | A9 | Abuso de WebSocket | Conexión sin auth, join a rooms ajenos, flood | JWT verificado en handshake; autorización de room contra la pensión en DB; rate limit de mensajes por conexión; límite de tamaño (2000 chars) |
 | A10 | Manipulación de facturación | Duplicar/alterar numeración | Numeración con `SELECT ... FOR UPDATE`; facturas inmutables (`VOIDED`, nunca DELETE/UPDATE de montos); auditoría |
 | A11 | Fuga por errores | Stack traces / mensajes internos al cliente | Filtro global de excepciones: el cliente recibe `{ code, message }` genérico; el detalle va al log del servidor |
@@ -80,10 +80,12 @@
 
 - **Sockets de vida larga vs TTL del access token (15 min):** el JWT se
   verifica una sola vez en el handshake (HS256 pineado, expiración exigida);
-  un socket abierto sigue autorizado tras expirar el token e incluso tras un
-  logout HTTP. Aceptado por ahora (el daño está acotado: solo eventos de chat
-  de conversaciones propias). Mitigación planificada: registro userId→sockets
-  para desconexión forzada en logout/suspensión, o edad máxima de conexión.
+  un socket abierto seguía autorizado tras expirar el token o un logout HTTP.
+  **Resuelto en Fase 18:** ambos gateways unen cada socket a una room por
+  usuario y el puerto `SESSION_TERMINATOR` (implementado por Communication,
+  consumido por Identity) fuerza la desconexión de todos los sockets del
+  usuario en logout y en suspensión Super-Admin. Auth del handshake por cookie
+  httpOnly `access_token` en la topología same-origin.
 - **Guards globales no cubren gateways:** en esta versión de
   `@nestjs/websockets` los `APP_GUARD`/`APP_PIPE` globales **no** se ejecutan
   para `@SubscribeMessage` (verificado empíricamente en la revisión de Fase 8).
@@ -92,10 +94,10 @@
   HTTP), validación de forma UUID de los ids y `maxHttpBufferSize` de 16 KB
   (el default de Socket.IO es 1 MB). Regla de revisión: todo gateway nuevo
   replica este preámbulo; nunca asumir que los guards globales lo protegen.
-- **CORS (HTTP y WS):** sin allow-list de origen todavía; llega con Helmet en
-  la Fase 18 (preparación para producción), cuando exista el origen real del
-  frontend. El riesgo interim es bajo: auth por Bearer/handshake (no cookies),
-  sin CSRF posible.
+- **CORS (HTTP y WS):** **resuelto en Fase 18.** Helmet + allow-list de origen
+  por `CORS_ORIGINS` (`credentials:true`). En producción la SPA y la API
+  comparten origen tras el reverse proxy nginx, así que el navegador no hace
+  CORS; el allow-list es defensa en profundidad para clientes directos.
 
 ### Autorización (RBAC + ownership)
 
@@ -138,12 +140,24 @@ Petición → JwtAuthGuard (¿token válido?)
 - [ ] Errores devueltos vía envelope, sin detalle interno
 - [ ] Sin `console.log` con datos sensibles
 
-**Gate de producción (Fase 18):**
+**Gate de producción (Fase 18):** ✅ cerrado 2026-07-13
 
-- [ ] HTTPS + HSTS activos
-- [ ] CSP nonce-based configurada
-- [ ] CORS restringido al dominio del frontend
-- [ ] Rate limits verificados con test de carga ligero
-- [ ] `pnpm audit` sin CRITICAL/HIGH
-- [ ] Contenedores non-root, imágenes multi-stage sin devDependencies
-- [ ] `security-report.md` (Fase 15) sin hallazgos CRITICAL/HIGH abiertos
+- [x] HSTS activo (Helmet); HTTPS lo termina el reverse proxy/hosting (`COOKIE_SECURE=true`)
+- [x] CSP estricta configurada (servida por nginx con la SPA; `script-src 'self'`,
+      sin `unsafe-inline` en scripts — equivalente a nonce para un bundle Vite estático)
+- [x] CORS restringido por allow-list (`CORS_ORIGINS`, `credentials:true`);
+      la topología same-origin (nginx) elimina el CORS del navegador
+- [x] Rate limits verificados (throttler global + estricto en auth/PDF/avisos/reservas;
+      los E2E de autorización ejercen el límite de login)
+- [x] `pnpm audit --prod` sin CRITICAL/HIGH (backend y frontend; `multer` fijado ≥ 2.2.0)
+- [x] Contenedores non-root (`node` / nginx-unprivileged), imágenes multi-stage;
+      el runner de API excluye el toolchain de dev (jest/eslint/tsc/nest-cli)
+- [x] `security-report.md` sin hallazgos CRITICAL/HIGH abiertos (C-1 cerrado)
+
+**Endurecimiento añadido en Fase 18:**
+
+- Tokens en cookies httpOnly + double-submit CSRF (`CsrfGuard`) — cierra C-1 (A2/A8).
+- Desconexión forzada de WebSockets en logout/suspensión (`SESSION_TERMINATOR`),
+  cerrando el trade-off de sockets de vida larga documentado en §4.
+- Logging estructurado en JSON con `X-Request-Id` (A09).
+- Headers de seguridad vía Helmet (HSTS, `X-Frame-Options: DENY`, nosniff, referrer).
