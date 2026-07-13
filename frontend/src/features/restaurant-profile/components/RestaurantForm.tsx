@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api-client';
+import { optionalImageUrl } from '@/lib/image-url';
 import type { OwnerRestaurantView } from '@/lib/api-types';
 import { useCreateOwnRestaurant, useUpdateOwnRestaurant } from '../hooks';
 import type { RestaurantProfileInput } from '../api';
@@ -25,8 +26,8 @@ const schema = z.object({
     .number({ message: 'Ingresa un precio válido.' })
     .min(0.01, 'Debe ser mayor a 0.')
     .max(99_999_999.99),
-  logoUrl: z.union([z.string().trim().url('URL inválida.'), z.literal('')]),
-  coverImageUrl: z.union([z.string().trim().url('URL inválida.'), z.literal('')]),
+  logoUrl: optionalImageUrl,
+  coverImageUrl: optionalImageUrl,
 });
 
 type FormValues = z.infer<typeof schema>;

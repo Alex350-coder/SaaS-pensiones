@@ -93,7 +93,7 @@ export function MenusPage() {
       {menu.isError && !isMenuNotFound(menu.error) && (
         <ErrorState onRetry={() => menu.refetch()} />
       )}
-      {menu.data && <MenuEditor menu={menu.data} />}
+      {menu.data && <MenuEditor key={menu.data.menuDate} menu={menu.data} />}
     </>
   );
 }

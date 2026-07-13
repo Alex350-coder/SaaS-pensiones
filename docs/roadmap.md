@@ -255,6 +255,7 @@
 - Revisión completa con agentes de code review (TS/React/NestJS) y de arquitectura.
 - `code-review.md` + `architecture-review.md`.
 - Correcciones CRITICAL/HIGH aplicadas; MEDIUM documentadas o corregidas.
+- Remove all dead code, unused modules, obsolete files, unused assets, mock data, commented-out code, and any functionality that is no longer referenced or has no effect on the application. Ensure that no active features are broken and update imports, exports, and dependencies accordingly.
 
 ---
 

@@ -66,6 +66,9 @@ quedaron **cubiertos por tests E2E adversariales** nuevos
      futuro se renderiza HTML de usuario, introducir un sanitizador vetado.
 - **Decisión sugerida:** opción 1 (no hay render de HTML de usuario; añadir un
   sanitizador ahora sería YAGNI). Pendiente para Fase 16 (doc).
+- **✅ Resuelto (Fase 16):** `security.md` A7/A03 reconciliado — documenta la
+  estrategia real (codificación en salida + prohibición de
+  `dangerouslySetInnerHTML`, no sanitización de entrada). LOW-1 cerrado.
 
 ### 🔵 LOW-2 — Sin throttle estricto por endpoint en creación de reservas
 

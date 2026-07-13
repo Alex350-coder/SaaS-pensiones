@@ -1,5 +1,5 @@
 import { Save, Trash2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -47,11 +47,11 @@ export function MenuEditor({ menu }: { menu: OwnerMenuView }) {
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Re-sync to server state after a save/refetch or when switching dates.
-  useEffect(() => {
-    setSelected(new Set(menu.items.map((i) => i.dish.id)));
-    setPrice(String(menu.menuPrice));
-  }, [menu.items, menu.menuPrice]);
+  // `selected`/`price` are independent editable client state, lazy-initialized
+  // from the menu once. Switching dates remounts this component (keyed by
+  // menuDate in MenusPage), so we intentionally do NOT resync on every cache
+  // refetch — that would clobber uncommitted edits when an unrelated mutation
+  // (e.g. saving the price) invalidates the menu query.
 
   const byCategory = useMemo(() => {
     const map = new Map<DishCategory, DishView[]>();

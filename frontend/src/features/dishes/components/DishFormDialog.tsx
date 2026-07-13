@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api-client';
 import type { DishCategory, DishView } from '@/lib/api-types';
+import { optionalImageUrl } from '@/lib/image-url';
 import { cn } from '@/lib/utils';
 import { useCreateDish, useUpdateDish } from '../hooks';
 
@@ -35,7 +36,7 @@ const dishSchema = z.object({
     .number({ message: 'Ingresa un precio válido.' })
     .min(0, 'No puede ser negativo.')
     .max(99_999_999.99),
-  imageUrl: z.union([z.string().trim().url('URL inválida.'), z.literal('')]),
+  imageUrl: optionalImageUrl,
   isActive: z.boolean(),
 });
 

@@ -27,7 +27,7 @@
 | A4 | Escalada vertical | CLIENT invoca endpoints de admin | RBAC con guards por defecto **deny**: todo endpoint exige rol explícito; el super admin es el único que muta estados de restaurante |
 | A5 | Restaurante fraudulento | Alta de restaurante falso que capta pagos | Flujo de aprobación por Super Admin (`PENDING` no es visible ni contratable); suspensión inmediata con efecto en catálogo y contratación |
 | A6 | Inyección SQL | Inputs en filtros/búsquedas | Prisma parametriza todo; prohibido `$queryRawUnsafe`; `$queryRaw` solo con template literals parametrizados y revisión |
-| A7 | XSS almacenado | Chat, descripciones de restaurante, avisos | React escapa por defecto; **prohibido `dangerouslySetInnerHTML`** con contenido de usuario; sanitización server-side de campos de texto libre; CSP |
+| A7 | XSS almacenado | Chat, descripciones de restaurante, avisos | Estrategia anti-XSS = **codificación en salida (output-encoding)**: React escapa por defecto y **`dangerouslySetInnerHTML` está prohibido** (cero usos) — no se renderiza HTML de usuario. Los DTOs validan y recortan el texto libre en el borde. CSP en producción. No se sanitiza la entrada porque no hay render de HTML de usuario (un sanitizador sería YAGNI; ver `security-report.md` LOW-1) |
 | A8 | CSRF | Acciones con sesión implícita | API stateless con `Authorization: Bearer` (sin cookies de sesión) ⇒ CSRF neutralizado por diseño; CORS restrictivo al origen del frontend |
 | A9 | Abuso de WebSocket | Conexión sin auth, join a rooms ajenos, flood | JWT verificado en handshake; autorización de room contra la pensión en DB; rate limit de mensajes por conexión; límite de tamaño (2000 chars) |
 | A10 | Manipulación de facturación | Duplicar/alterar numeración | Numeración con `SELECT ... FOR UPDATE`; facturas inmutables (`VOIDED`, nunca DELETE/UPDATE de montos); auditoría |
@@ -42,7 +42,7 @@
 |-------|------------------------------|
 | A01 Broken Access Control | RBAC deny-by-default + ownership checks por recurso (amenazas A3/A4). Tests de autorización obligatorios por endpoint |
 | A02 Cryptographic Failures | bcrypt para contraseñas; refresh tokens hasheados; TLS en producción; sin datos sensibles en JWT payload |
-| A03 Injection | Prisma parametrizado (A6); validación de DTOs; sanitización de texto libre (A7) |
+| A03 Injection | Prisma parametrizado (A6); validación/recorte de DTOs; anti-XSS por codificación en salida (A7) |
 | A04 Insecure Design | Este documento + invariantes en DB (constraints) + flujo de aprobación de restaurantes |
 | A05 Security Misconfiguration | Helmet (headers), CORS restrictivo, `ValidationPipe` con `forbidNonWhitelisted`, sin endpoints de debug en producción, contenedores non-root |
 | A06 Vulnerable Components | `pnpm audit` en CI local; lockfile versionado; dependencias mínimas |

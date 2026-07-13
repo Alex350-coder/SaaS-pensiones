@@ -156,14 +156,14 @@ function GalleryManager({ images }: { images: ImageView[] }) {
         </div>
         {images.length > 0 && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {images.map((image) => (
+            {images.map((image, i) => (
               <div
                 key={image.id}
                 className="group relative overflow-hidden rounded-md border border-border"
               >
                 <img
                   src={image.url}
-                  alt=""
+                  alt={`Foto de la galería ${i + 1}`}
                   className="aspect-video w-full object-cover"
                   loading="lazy"
                 />

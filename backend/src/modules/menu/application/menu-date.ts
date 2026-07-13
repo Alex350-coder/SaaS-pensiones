@@ -6,5 +6,4 @@ export {
   parseUtcDate as parseMenuDate,
   formatUtcDate as formatMenuDate,
   todayUtc as todayMenuDate,
-  UTC_DATE_PATTERN as MENU_DATE_PATTERN,
 } from '../../../core/dates/utc-date';
