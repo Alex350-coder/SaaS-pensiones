@@ -146,12 +146,18 @@ export class ReservationsService {
         if (violation) {
           throw RULE_ERRORS[violation]();
         }
+        // Unreachable: a null pension yields the NO_ACTIVE_PENSION violation
+        // above. Kept as an explicit type guard so `pension.id` needs no
+        // non-null assertion.
+        if (!pension) {
+          throw RULE_ERRORS.NO_ACTIVE_PENSION();
+        }
 
         return tx.reservation.create({
           data: {
             clientId,
             dailyMenuId: menu.id,
-            pensionId: pension!.id,
+            pensionId: pension.id,
             estimatedArrival: arrivalTimeToDb(dto.estimatedArrival),
             notes: dto.notes,
           },

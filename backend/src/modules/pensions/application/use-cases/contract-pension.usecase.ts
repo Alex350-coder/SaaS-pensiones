@@ -60,7 +60,14 @@ export class ContractPensionUseCase {
     });
 
     const withParties = await this.pensions.findForClient(pensionId, clientId);
-    // Just created by this client — always present.
-    return toPensionView(withParties!, today);
+    // Just created by this client — always present; guard keeps a clean 404
+    // instead of a raw TypeError if that invariant ever changes.
+    if (!withParties) {
+      throw new NotFoundException({
+        code: 'PENSION_NOT_FOUND',
+        message: 'La pensión no existe.',
+      });
+    }
+    return toPensionView(withParties, today);
   }
 }

@@ -70,7 +70,7 @@ export class ChangePensionStatusUseCase {
     actorId: string,
     pensionId: string,
     target: PensionStatus,
-    refetch: () => Promise<unknown>,
+    refetch: () => Promise<Parameters<typeof toPensionView>[0] | null>,
   ): Promise<PensionView> {
     const outcome = await this.pensions
       .withLockedPension(pensionId, async (ops) => {
@@ -117,7 +117,10 @@ export class ChangePensionStatusUseCase {
       },
     });
 
-    const fresh = (await refetch()) as Parameters<typeof toPensionView>[0];
+    const fresh = await refetch();
+    if (!fresh) {
+      throw pensionNotFoundError();
+    }
     return toPensionView(fresh, this.clock.todayUtc());
   }
 }

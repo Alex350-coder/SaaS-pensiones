@@ -16,9 +16,14 @@ sólidos. Backend: type-safety ejemplar (**0 `any`, 0 `as any`, 0 `@ts-ignore`,
 0 `eslint-disable`** en `src`), envelope/paginación/errores centralizados, dominio
 puro sin framework. Suite base **347 backend + 206 frontend + 17 E2E** en verde.
 
-**Veredicto:** 1 CRITICAL (decisión de arquitectura documentada, no defecto), 2
-HIGH (1 corregido, 1 documentado), 5 MEDIUM (3 corregidos, 2 documentados). Sin
-defectos de corrección abiertos que bloqueen la fase.
+**Veredicto:** 1 CRITICAL (decisión de arquitectura documentada, no defecto); 3
+HIGH (2 corregidos, 1 documentado); 7 MEDIUM (4 corregidos, 3 documentados); LOW
+de endurecimiento. Sin defectos de corrección abiertos que bloqueen la fase.
+
+> Nota de proceso: `typescript-reviewer` cayó 2× por el límite de sesión del plan
+> y completó al reintentar. Sus hallazgos de backend (sección "Backend") se
+> aplicaron/documentaron **después** del primer commit de la Fase 16, en un commit
+> de seguimiento; el fix HIGH se verificó con la suite completa.
 
 ## Hallazgos
 
@@ -76,10 +81,9 @@ tarea de tooling para Fase 17/18 (junto con el resto del endurecimiento de CI).
 
 ### 🔵 LOW / Notas
 
-- **L-1 — Aserción no-nula `pension!.id`** (`reservations.service.ts:154`): segura
-  (el guard `reservationCreateViolation` lanza si `pension` es null), pero la
-  seguridad no está enforced por tipos. Opcional: reemplazar `!` por un
-  `if (!pension) throw ...` explícito para narrowing por tipos. Sin riesgo actual.
+- **L-1 — Aserción no-nula `pension!.id`** (`reservations.service.ts`): ✅
+  **corregido** (ver B-5) — guard explícito `NO_ACTIVE_PENSION`. Era el único `!`
+  del backend.
 - **Dinero como `number`** (cast a `numeric(10,2)` al persistir): patrón
   preexistente en todo el repo, redondea correctamente al persistir. **Limitación
   conocida aceptada** (decisión del usuario en Fase 16/17); ver
@@ -88,6 +92,31 @@ tarea de tooling para Fase 17/18 (junto con el resto del endurecimiento de CI).
   `rel="noreferrer"`; `key={index}` solo en skeletons de conteo fijo; ciclo de
   vida de sockets (`useSocket`, `useChatSocket`) es implementación de referencia;
   refresh single-flight en `api-client.ts`.
+
+## Backend (typescript-reviewer)
+
+`tsc --noEmit` limpio; `no-floating-promises` / `no-misused-promises` /
+`no-explicit-any` enforced y en verde. Type-safety ejemplar: **0 `any`/`as any`**,
+1 aserción no-nula (ahora eliminada). Zonas críticas confirmadas correctas:
+`withLockedPension` + los 3 `SELECT … FOR UPDATE` (check-then-write bajo el mismo
+lock con re-chequeo), numeración atómica `ON CONFLICT … RETURNING` de facturas,
+claim single-winner de `RefreshTokenService.rotate`, `AllExceptionsFilter` sin
+fuga de stack en producción, DTOs con caps de array/longitud/rango y
+`PaginationQueryDto` con `MAX_PAGE_SIZE = 100` en todo listado.
+
+| # | Sev. | Hallazgo | Ubicación | Estado |
+|---|------|----------|-----------|--------|
+| B-1 | HIGH | Cast `as` que descarta el `\| null`: `refetch: () => Promise<unknown>` + `(await refetch()) as …` podía lanzar `TypeError` crudo en vez de un 404 de dominio | `pensions/.../change-pension-status.usecase.ts` | ✅ **CORREGIDO.** `refetch` tipado con `\| null`, sin cast, guard explícito `if (!fresh) throw pensionNotFoundError()`. |
+| B-2 | MEDIUM | Refetch post-transacción con aserciones no-nulas en vez de guard explícito | `register-payment.usecase.ts`, `contract-pension.usecase.ts` | ✅ **CORREGIDO.** Guards explícitos `PENSION_NOT_FOUND`. |
+| B-3 | MEDIUM | Scan histórico sin cota en el dedupe del cron de vencimientos (traía todas las notifs `PENSION_EXPIRING` de siempre) | `communication/.../expiring-pensions-notifier.service.ts` | ✅ **CORREGIDO en Fase 17** con cota `createdAt >= today - DEDUPE_LOOKBACK_DAYS` (usa el índice `[userId, createdAt]`). |
+| B-4 | MEDIUM | Mapeo por `message.includes('uq_…')` de violaciones de índice único parcial (frágil ante upgrade de driver) | `catalog/restaurants.service.ts`, `identity/auth.service.ts` | **Documentado.** Intencional (los uniques parciales de SQL crudo no emiten `P2002` usable). Recomendado test de regresión que fije la forma del error del driver en CI. |
+| B-5 | LOW | Aserción `pension!.id` apoyada en invariante cross-función | `reservations/.../reservations.service.ts` | ✅ **CORREGIDO.** Guard explícito `NO_ACTIVE_PENSION` (elimina la última aserción no-nula del backend). |
+| B-6 | LOW | Micro-oportunidad secuencial→paralelo en el dashboard | `analytics/.../dashboard.service.ts` | **Declinado (documentado).** Marginal; las llamadas re-resuelven el restaurante internamente, así que paralelizar podría duplicar el lookup — evitar optimización especulativa (KISS/YAGNI). |
+
+**Dinero:** confirmado que las comparaciones/sumas monetarias en los flujos con
+lock (`register-payment.usecase.ts`) convierten a centavos enteros vía `toCents()`
+antes de comparar — sin aritmética float insegura en los caminos críticos. Sólida
+mitigación del trade-off documentado; sin acción.
 
 ## Barrido de código muerto (`knip` + `ts-prune` + `depcheck`)
 

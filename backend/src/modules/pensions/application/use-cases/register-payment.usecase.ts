@@ -181,8 +181,14 @@ export class RegisterPaymentUseCase {
       pensionId,
       restaurantId,
     );
+    if (!fresh) {
+      throw new NotFoundException({
+        code: 'PENSION_NOT_FOUND',
+        message: 'La pensión no existe.',
+      });
+    }
     return {
-      pension: toPensionView(fresh!, this.clock.todayUtc()),
+      pension: toPensionView(fresh, this.clock.todayUtc()),
       payment: toPaymentView(outcome.payment),
       paidTotal: outcome.paidTotal,
       activated: outcome.activated,
