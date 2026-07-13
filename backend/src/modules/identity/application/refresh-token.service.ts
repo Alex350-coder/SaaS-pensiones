@@ -109,6 +109,20 @@ export class RefreshTokenService {
     return result.count;
   }
 
+  /**
+   * Deletes refresh tokens whose lifetime has ended. An expired token is
+   * already unusable — `rotate()` rejects it on the `expiresAt` check — so
+   * removing it (used, revoked, or simply aged out) frees storage without
+   * weakening reuse detection, which only matters for revoked-but-live tokens.
+   * Idempotent; safe to run on a schedule.
+   */
+  async purgeExpired(now: Date = new Date()): Promise<number> {
+    const result = await this.prisma.refreshToken.deleteMany({
+      where: { expiresAt: { lte: now } },
+    });
+    return result.count;
+  }
+
   private async detectReuse(stored: RefreshToken): Promise<never> {
     const revokedCount = await this.revokeFamily(stored.familyId);
     // Only the request that actually revoked live tokens audits the event,

@@ -10,6 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../../../core/auth/auth-user';
 import { CurrentUser } from '../../../core/auth/current-user.decorator';
@@ -21,12 +22,19 @@ import {
   UpdateReservationDto,
 } from './dto/reservation.dto';
 
+const MINUTE_MS = 60_000;
+/** A pensioner reserves at most one menu per day; this caps write abuse. */
+const RESERVATION_LIMIT_PER_MINUTE = 20;
+
 /** Client surface: reserve the day's menu, follow and cancel reservations. */
 @Roles(UserRole.CLIENT)
 @Controller('reservations')
 export class MyReservationsController {
   constructor(private readonly reservations: ReservationsService) {}
 
+  @Throttle({
+    default: { limit: RESERVATION_LIMIT_PER_MINUTE, ttl: MINUTE_MS },
+  })
   @Post()
   create(
     @CurrentUser() user: AuthUser,

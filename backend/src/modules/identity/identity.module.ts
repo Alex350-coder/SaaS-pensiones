@@ -5,6 +5,7 @@ import { AuthService } from './application/auth.service';
 import { PasswordService } from './application/password.service';
 import { RefreshTokenService } from './application/refresh-token.service';
 import { TokenService } from './application/token.service';
+import { RefreshTokenPurgeJob } from './infrastructure/refresh-token-purge.job';
 import { AdminUsersController } from './presentation/admin-users.controller';
 import { AuthController } from './presentation/auth.controller';
 
@@ -18,6 +19,7 @@ import { AuthController } from './presentation/auth.controller';
     RefreshTokenService,
     TokenService,
     AdminUsersService,
+    RefreshTokenPurgeJob,
   ],
   exports: [TokenService],
 })

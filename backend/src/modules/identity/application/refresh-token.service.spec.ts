@@ -20,6 +20,7 @@ interface PrismaMock {
     findUnique: jest.Mock;
     updateMany: jest.Mock;
     create: jest.Mock;
+    deleteMany: jest.Mock;
   };
 }
 
@@ -33,6 +34,7 @@ const buildService = (): {
       findUnique: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       create: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
   };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -181,5 +183,16 @@ describe('RefreshTokenService', () => {
 
     await expect(service.revokeFamilyOf('raw', 'user-1')).resolves.toBe(false);
     expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('purgeExpired deletes tokens past expiry and returns the count', async () => {
+    const { service, prisma } = buildService();
+    prisma.refreshToken.deleteMany.mockResolvedValue({ count: 4 });
+    const now = new Date('2026-07-12T00:00:00.000Z');
+
+    await expect(service.purgeExpired(now)).resolves.toBe(4);
+    expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+      where: { expiresAt: { lte: now } },
+    });
   });
 });

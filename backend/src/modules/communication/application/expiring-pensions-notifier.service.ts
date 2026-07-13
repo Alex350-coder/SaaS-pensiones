@@ -14,6 +14,16 @@ import { NotificationsService } from './notifications.service';
 export const EXPIRING_WINDOW_DAYS = 3;
 
 /**
+ * Dedupe look-back for the "already warned?" query. A pension sits in the
+ * warning window for at most `EXPIRING_WINDOW_DAYS + 1` daily sweeps, so any
+ * prior warning for a pension currently in-window was created within that
+ * span; the extra week absorbs missed sweeps (downtime) without re-warning.
+ * Bounding `createdAt` keeps the scan off the client's full notification
+ * history and lets the `[userId, createdAt]` index do the work.
+ */
+const DEDUPE_LOOKBACK_DAYS = EXPIRING_WINDOW_DAYS + 8;
+
+/**
  * Daily "vencimientos" sweep (roadmap F9): every ACTIVE pension whose end
  * date falls within the warning window earns its client exactly one
  * PENSION_EXPIRING notification. Communication may read Pensions data —
@@ -46,13 +56,15 @@ export class ExpiringPensionsNotifierService {
       return 0;
     }
 
-    // Dedupe: one warning per pension, ever — read or unread. JSON-path
-    // filters cannot do IN, so fetch the candidates' rows and filter here;
-    // the window keeps this set small.
+    // Dedupe: one warning per pension while it is in-window — read or unread.
+    // JSON-path filters cannot do IN, so fetch the candidates' recent rows and
+    // filter here. Bounded by `createdAt` so this never scans a client's full
+    // notification history (see DEDUPE_LOOKBACK_DAYS).
     const existing = await this.prisma.notification.findMany({
       where: {
         type: NotificationType.PENSION_EXPIRING,
         userId: { in: [...new Set(expiring.map((p) => p.clientId))] },
+        createdAt: { gte: addUtcDays(today, -DEDUPE_LOOKBACK_DAYS) },
       },
       select: { payload: true },
     });
