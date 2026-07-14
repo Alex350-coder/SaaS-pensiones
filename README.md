@@ -143,10 +143,3 @@ pnpm test:e2e
 | [security.md](docs/security.md) | Threat model, OWASP coverage, controls |
 | [ui-ux.md](docs/ui-ux.md) | Design system, palette, accessibility |
 | [security-report.md](docs/security-report.md) · [code-review.md](docs/code-review.md) · [architecture-review.md](docs/architecture-review.md) · [performance-report.md](docs/performance-report.md) | Review artifacts |
-
-## Screenshots
-
-_Add captures of the landing page, restaurant catalog, client pension view, and
-the restaurant dashboard here._
-
-<!-- ![Landing](docs/screenshots/landing.png) -->
